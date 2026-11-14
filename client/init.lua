@@ -1,0 +1,7 @@
+require 'client.death'
+require 'client.damage'
+require 'client.treatment'
+require 'client.carry'
+require 'client.hospitals'
+require 'client.mdt'
+require 'client.billing'
