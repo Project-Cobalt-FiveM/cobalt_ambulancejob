@@ -137,14 +137,12 @@
         "not_now": "Not now"
     },
     "hospital": {
-        "get_closer_supplies": "Get closer to the supplies",
         "front_desk_narrative": "Checked in at %s with no medic on duty. Treated by the front desk.",
         "front_desk_done": "The front desk patched you up",
         "check_in_fee": "Hospital check-in",
         "front_desk_invoice": "Report T-%d, front desk care",
         "medics_on_duty": "Medics are on duty. Call EMS and one will come to you.",
         "check_in": "Check in",
-        "open_stash": "Open %s",
         "open_wardrobe": "Open wardrobe",
         "take_vehicle": "Take out the %s",
         "lie_on_bed": "Lie on %s",

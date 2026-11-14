@@ -209,23 +209,6 @@ end
 
 ---@param hospital Hospital
 local function addZones(hospital)
-    if hospital.supplyStash then
-        exports.ox_target:addSphereZone({
-            coords = hospital.supplyStash.coords,
-            radius = 1.2,
-            options = {
-                {
-                    name = 'cobalt_ambulancejob:supplies',
-                    label = locale('hospital.open_stash', hospital.supplyStash.label),
-                    icon = 'fas fa-briefcase-medical',
-                    distance = 2.0,
-                    canInteract = patient.isMedic,
-                    onSelect = function() TriggerServerEvent('cobalt_ambulancejob:server:openSupplies', hospital.id) end,
-                },
-            },
-        })
-    end
-
     if hospital.wardrobe then
         exports.ox_target:addSphereZone({
             coords = hospital.wardrobe,

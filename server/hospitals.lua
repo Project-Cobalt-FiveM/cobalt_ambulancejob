@@ -8,7 +8,6 @@ local billing <const> = require 'server.billing'
 local records <const> = require 'server.records'
 
 local DESK_RANGE <const> = 3.0
-local STASH_RANGE <const> = 3.0
 local PROGRESS_GRACE_MS <const> = 500
 
 ---@class PendingCheckIn
@@ -17,20 +16,6 @@ local PROGRESS_GRACE_MS <const> = 500
 
 ---@type table<integer, PendingCheckIn>
 local pendingCheckIns <const> = {}
-
-for _, hospital in ipairs(hospitals.list()) do
-    local stash <const> = hospital.supplyStash
-
-    if stash then
-        exports.cobalt_inventory:CreateStash(stash.id, {
-            slots = stash.slots,
-            maxWeight = stash.maxWeight,
-            label = stash.label,
-            jobs = { [config.job] = 0 },
-            coords = stash.coords,
-        })
-    end
-end
 
 ---@type table<integer, integer> medic source to the vehicle they last took out
 local spawnedVehicles <const> = {}
@@ -53,19 +38,6 @@ RegisterNetEvent('cobalt_ambulancejob:server:spawnVehicle', function(hospitalId,
             return
         end
     end
-end)
-
-RegisterNetEvent('cobalt_ambulancejob:server:openSupplies', function(hospitalId)
-    local source <const> = source
-    local stash <const> = hospitals.get(hospitalId)?.supplyStash
-
-    if not stash or not medics.isMedic(source) then return end
-
-    if #(GetEntityCoords(GetPlayerPed(source)) - stash.coords) > STASH_RANGE then
-        return medics.notify(source, locale('hospital.get_closer_supplies'), 'error')
-    end
-
-    exports.cobalt_inventory:OpenStash(source, stash.id)
 end)
 
 ---@return boolean

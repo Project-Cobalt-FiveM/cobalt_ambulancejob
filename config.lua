@@ -20,7 +20,6 @@
 ---@field respawn vector4
 ---@field doctor? { model: string, coords: vector4, scenario?: string }
 ---@field checkIn? vector3
----@field supplyStash? { id: string, label: string, coords: vector3, slots: integer, maxWeight: integer }
 ---@field wardrobe? vector3
 ---@field spawner? { coords: vector3, spawnCoords: vector4, vehicles: { model: string, label: string }[] }
 ---@field beds Bed[]
@@ -153,7 +152,7 @@ return {
     -- Body parts injuries are tracked on
     bodyParts = { 'head', 'torso', 'left_arm', 'right_arm', 'left_leg', 'right_leg' },
 
-    -- Hospitals: blip, respawn point, check-in doctor, supply stash, wardrobe, vehicle spawner and beds
+    -- Hospitals: blip, respawn point, check-in doctor, wardrobe, vehicle spawner and beds; supply stashes are in cobalt_inventory data/stashes.lua
     ---@type Hospital[]
     hospitals = {
         {
@@ -170,13 +169,6 @@ return {
                 scenario = 'WORLD_HUMAN_CLIPBOARD', -- scenario the ped plays
             },
             checkIn = vec3(305.57, -595.84, 43.29), -- in front of the reception counter, where players check in; defaults to the doctor's position
-            supplyStash = { -- medics' supply stash
-                id = 'pillbox_supplies', -- cobalt_inventory stash id
-                label = 'Pillbox Medical Supplies', -- stash title
-                coords = vec3(307.42, -601.58, 43.28), -- where medics open it
-                slots = 100, -- cells in the stash, laid out 5 to a row
-                maxWeight = 200000, -- most it holds, in grams
-            },
             wardrobe = vec3(310.56, -598.14, 43.28), -- where medics change into uniform
             spawner = { -- work vehicle garage
                 coords = vec3(294.55, -603.16, 42.10), -- where medics open the garage
