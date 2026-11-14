@@ -16,7 +16,6 @@
   import ReportEditor from './pages/ReportEditor.svelte';
   import Prescriptions from './pages/Prescriptions.svelte';
   import Billing from './pages/Billing.svelte';
-  import Beds from './pages/Beds.svelte';
   import Roster from './pages/Roster.svelte';
   import Management from './pages/management/Management.svelte';
 
@@ -75,8 +74,6 @@
               <Prescriptions />
             {:else if mdt.route.page === 'billing'}
               <Billing />
-            {:else if mdt.route.page === 'beds'}
-              <Beds />
             {:else if mdt.route.page === 'roster'}
               <Roster />
             {:else if mdt.route.page === 'management'}

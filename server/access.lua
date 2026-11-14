@@ -7,7 +7,6 @@ local medics <const> = require 'server.medics'
 ---| 'editPatients'
 ---| 'writePrescriptions'
 ---| 'prescribeControlled'
----| 'admitDischarge'
 ---| 'useDefib'
 ---| 'sendInvoices'
 ---| 'voidInvoices'
@@ -18,15 +17,15 @@ local medics <const> = require 'server.medics'
 ---| 'manageSettings'
 ---| 'administrator'
 
----@alias EmsPage 'dashboard'|'dispatch'|'patients'|'reports'|'prescriptions'|'billing'|'beds'|'roster'|'management'
+---@alias EmsPage 'dashboard'|'dispatch'|'patients'|'reports'|'prescriptions'|'billing'|'roster'|'management'
 
 ---@class EmsSettings
 ---@field medicShare integer percent of each paid bill that goes to the filing medic
 ---@field shareWithPolice boolean
 
 local PERMISSIONS <const> = {
-    'writeReports', 'editOtherReports', 'editPatients', 'writePrescriptions', 'prescribeControlled', 'admitDischarge',
-    'useDefib', 'sendInvoices', 'voidInvoices', 'shareReports', 'manageTreatments', 'manageRoster', 'manageTemplates',
+    'writeReports', 'editOtherReports', 'editPatients', 'writePrescriptions', 'prescribeControlled', 'useDefib',
+    'sendInvoices', 'voidInvoices', 'shareReports', 'manageTreatments', 'manageRoster', 'manageTemplates',
     'manageSettings', 'administrator',
 }
 
@@ -38,7 +37,6 @@ local PAGES <const> = {
     { page = 'reports', permissions = {} },
     { page = 'prescriptions', permissions = { 'writePrescriptions' } },
     { page = 'billing', permissions = { 'sendInvoices' } },
-    { page = 'beds', permissions = {} },
     { page = 'roster', permissions = {} },
     { page = 'management', permissions = { 'manageRoster', 'manageTreatments', 'manageTemplates', 'manageSettings' } },
 }

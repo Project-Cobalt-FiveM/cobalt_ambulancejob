@@ -83,11 +83,6 @@ return {
     -- Animation while dead
     deadAnim = { dict = 'dead', clip = 'dead_a' },
 
-    -- Recovering in a hospital bed after a field revive
-    recovery = {
-        seconds = 30, -- seconds in bed
-    },
-
     -- Knockouts from melee and stun weapons instead of going down
     knockout = {
         seconds = 30, -- seconds knocked out
@@ -162,8 +157,8 @@ return {
     ---@type Hospital[]
     hospitals = {
         {
-            id = 'pillbox', -- unique id that bed admissions and check-ins refer to
-            enabled = true, -- false leaves the hospital out: no blip, no respawns, no check-in
+            id = 'pillbox', -- unique id that beds and check-ins refer to
+            enabled = true, -- false leaves the hospital out: no blip, no respawns, no check-in, no beds
             label = 'Pillbox Hill Medical', -- full name on the blip and in menus
             short = 'Pillbox Hill', -- short name in notifications
             coords = vec3(298.62, -584.83, 43.27), -- blip position
@@ -189,7 +184,7 @@ return {
                     { model = 'lguard', label = 'Lifeguard' },
                 },
             },
-            beds = { -- treatment beds in the hospital_map interior; coords is the lie-down point on the mattress, exit the stand-up point beside the bed; a bed without both is never given to a patient
+            beds = { -- treatment beds in the hospital_map interior; coords is the lie-down point on the mattress, exit the stand-up point beside the bed; a bed without both stays empty and doesn't count on the MDT
                 { label = 'Bed 1', coords = vec4(349.69, -583.61, 43.02, 160.0), exit = vec4(350.67, -584.29, 43.32, 250.0) }, -- main ward, north row
                 { label = 'Bed 2', coords = vec4(353.24, -584.69, 43.11, 160.0), exit = vec4(354.22, -585.36, 43.32, 250.0) }, -- main ward, north row
                 { label = 'Bed 3', coords = vec4(356.74, -585.94, 43.11, 160.0), exit = vec4(355.55, -585.82, 43.32, 70.0) }, -- main ward, north row
@@ -229,10 +224,11 @@ return {
     -- Animation for a patient lying in a bed
     bedAnim = { dict = 'anim@gangops@morgue@table@', clip = 'body_search', flag = 1 },
 
-    -- Self check-in at a hospital desk
+    -- Self check-in at a hospital desk, which puts the player in a free bed and treats them
     checkIn = {
         fee = 150, -- dollars charged for treatment in a bed
-        minMedics = 1, -- with this many medics on duty, check-in pages them instead of treating the player in a bed
+        disableWhenEmsOnDuty = true, -- true closes check-in while enough EMS are on duty, so players call a medic instead
+        minEmsOnDuty = 1, -- on-duty EMS count that closes check-in when disableWhenEmsOnDuty is true
         checkInSeconds = 3, -- seconds of the cancelable check-in progress bar at the desk
         treatmentSeconds = 15, -- seconds the patient spends treated in a bed before getting up healed
         key = { control = 74, label = 'H' }, -- GTA control id and key label to check in while down or dead at the desk
@@ -252,7 +248,7 @@ return {
             },
         },
         lockedRank = 'EMT', -- rank named on a locked MDT feature when no grade has its permission
-        invoiceDays = 7, -- days a patient has to pay an invoice
+        invoiceDays = 7, -- days a patient has to pay an invoice, 1 to 365
         prescriptionDays = 30, -- default days a prescription stays valid
         invoiceLimits = { -- caps on one invoice: line count, dollars per line, dollars in total
             lines = 20, -- most lines on one invoice
@@ -275,7 +271,7 @@ return {
     doctorGrades = { [3] = true, [4] = true }, -- grade levels marked as doctors on the roster
     traineeGrades = { [0] = true }, -- grade levels marked as trainees on the roster, who see their training progress on the MDT dashboard
 
-    -- Certifications a boss can grant on the roster
+    -- Certifications a boss can grant on the roster, stored in the character's metadata.certifications.<job>
     certifications = { 'life', 'flight', 'fto' }, -- ids; each needs a certifications.<id> name in locales/en.json
 
     -- Starting treatment and fee catalogue on the MDT; bosses edit it in game
@@ -332,12 +328,11 @@ return {
     -- Starting MDT permissions per job grade; bosses edit them in game
     rankDefaults = {
         [0] = { writeReports = true, useDefib = true },
-        [1] = { writeReports = true, useDefib = true, editPatients = true, admitDischarge = true, sendInvoices = true },
+        [1] = { writeReports = true, useDefib = true, editPatients = true, sendInvoices = true },
         [2] = {
             writeReports = true,
             useDefib = true,
             editPatients = true,
-            admitDischarge = true,
             sendInvoices = true,
             writePrescriptions = true,
             editOtherReports = true,
@@ -347,7 +342,6 @@ return {
             writeReports = true,
             useDefib = true,
             editPatients = true,
-            admitDischarge = true,
             sendInvoices = true,
             writePrescriptions = true,
             prescribeControlled = true,

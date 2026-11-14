@@ -13,7 +13,7 @@
   import Tabs from '../components/ui/Tabs.svelte';
   import Row from '../components/ui/Row.svelte';
   import Empty from '../components/ui/Empty.svelte';
-  import { bornOn, shortBlood } from '../components/records/format';
+  import { bloodLabel, bornOn } from '../components/records/format';
   import { fetchNui } from '../lib/nui';
   import { mdt } from '../lib/store.svelte';
   import { capitalise, initials, money, plural, shortDate } from '../lib/format';
@@ -21,7 +21,7 @@
   import { t } from '../lib/locale.svelte';
   import type { PatientSummary } from '../lib/types';
 
-  type Filter = 'all' | 'admitted' | 'unpaid';
+  type Filter = 'all' | 'unpaid';
 
   let query = $state(lastQuery);
   let filter = $state<Filter>('all');
@@ -31,7 +31,6 @@
 
   const matches: Record<Filter, (patient: PatientSummary) => boolean> = {
     all: () => true,
-    admitted: (patient) => patient.admission !== null,
     unpaid: (patient) => patient.balance > 0,
   };
 
@@ -82,7 +81,6 @@
         bind:value={filter}
         tabs={[
           { value: 'all', label: t('ui.common.all'), count: results.length },
-          { value: 'admitted', label: t('ui.patients.admitted'), count: count('admitted') },
           { value: 'unpaid', label: t('ui.patients.unpaid_bills'), count: count('unpaid') },
         ]}
       />
@@ -105,10 +103,9 @@
               <span class="truncate text-xs {active ? '' : 'text-muted-foreground'}">{t('ui.patients.sex_born', capitalise(patient.sex), bornOn(patient.dob))}</span>
             </span>
             <span class="text-13 tabular-nums">{patient.citizenid}</span>
-            <span class="text-13 {patient.bloodType || active ? '' : 'text-muted-foreground'}">{shortBlood(patient.bloodType)}</span>
+            <span class="text-13 {patient.bloodType || active ? '' : 'text-muted-foreground'}">{bloodLabel(patient.bloodType)}</span>
             <span class="flex gap-1 overflow-hidden">
               {#if isDown(patient)}<Badge tone="danger">{t('ui.patients.down')}</Badge>{/if}
-              {#if patient.admission}<Badge tone={active ? 'onPrimary' : 'neutral'}>{patient.admission}</Badge>{/if}
               {#if patient.balance > 0}<Badge tone={active ? 'onPrimary' : 'neutral'}>{t('ui.patients.unpaid', money(patient.balance))}</Badge>{/if}
             </span>
           </button>
@@ -127,11 +124,11 @@
         <div class="flex flex-1 flex-col gap-5" in:crossfade>
           <div class="flex flex-col gap-0.5">
             <h2 class="truncate text-xl font-semibold tracking-[-0.01em]">{selected.name}</h2>
-            <span class="text-13 text-muted-foreground tabular-nums">{selected.citizenid}{selected.age !== null ? `, ${t('ui.patients.years_old', selected.age)}` : ''}</span>
+            <span class="text-13 text-muted-foreground tabular-nums">{selected.citizenid}{selected.age != null ? `, ${t('ui.patients.years_old', selected.age)}` : ''}</span>
           </div>
 
           <div class="flex flex-col">
-            <Row label={t('ui.common.blood_type')}>{selected.bloodType ?? t('ui.common.unknown')}</Row>
+            <Row label={t('ui.common.blood_type')}>{bloodLabel(selected.bloodType)}</Row>
             <Row label={t('ui.patients.conditions')}>{selected.conditions.join(', ') || t('ui.common.none')}</Row>
             <Row label={t('ui.patients.last_treated')}>{lastTreated(selected)}</Row>
             <Row label={t('ui.patients.balance_owed')}>{money(selected.balance)}</Row>

@@ -9,7 +9,6 @@ local records <const> = require 'server.records'
 local prescriptions <const> = require 'server.prescriptions'
 local beds <const> = require 'server.beds'
 local dispatch <const> = require 'server.dispatch'
-local Cobalt <const> = exports.cobalt_core:GetCoreObject()
 
 ---@class EmsMdtHandler
 ---@field fn fun(source: integer, data: table): any
@@ -113,15 +112,7 @@ local function dashboard(source)
         end
     end
 
-    local capacity <const> = beds.capacity()
-    local free, total = 0, 0
-
-    for _, hospital in ipairs(capacity) do
-        free += hospital.free
-        total += hospital.total
-    end
-
-    local unpaid <const> = billing.unpaid()
+    local invoices <const> = billing.totals()
     local training
 
     if config.traineeGrades[medics.job(source)?.grade or -1] then
@@ -140,16 +131,13 @@ local function dashboard(source)
             medicsOnDuty = #onDuty,
             medicsAvailable = available,
             medicsOnCalls = busy,
-            bedsFree = free,
-            bedsTotal = total,
-            hospitals = #capacity,
-            unpaidTotal = unpaid.total,
-            unpaidCount = unpaid.count,
-            overdueCount = unpaid.overdue,
+            unpaidTotal = invoices.unpaid,
+            unpaidCount = invoices.unpaidCount,
+            overdueCount = invoices.overdueCount,
             training = training,
         },
         onDuty = onDuty,
-        capacity = capacity,
+        hospitals = beds.overview(),
     }
 end
 
@@ -174,8 +162,7 @@ local function patientProfile(citizenid)
     profile.injuries = source and state.injuryList(source) or {}
     profile.reports = records.reports(" WHERE citizenid = ? AND status = 'filed'", { citizenid }, 100)
     profile.prescriptions = prescriptions.list(citizenid)
-    profile.admissions = beds.history(citizenid)
-    profile.invoices = billing.list(' WHERE citizenid = ?', { citizenid })
+    profile.invoices = billing.list(citizenid)
 
     return profile
 end
@@ -315,6 +302,12 @@ local function certificationList()
     return out
 end
 
+---@param byJob any the character's metadata.certifications
+---@return string[]
+local function jobCertifications(byJob)
+    return type(byJob) == 'table' and byJob[config.job] or {}
+end
+
 ---@return table
 local function roster()
     local employees <const> = exports.cobalt_management:GetEmployees(config.job)
@@ -324,27 +317,11 @@ local function roster()
         ids[i] = employee.citizenid
     end
 
-    local callsigns <const>, certifications <const>, reports <const>, revives <const> = {}, {}, {}, {}
+    local callsigns <const> = exports.cobalt_core:GetMetaData(ids, 'callsign')
+    local certifications <const> = exports.cobalt_core:GetMetaData(ids, 'certifications')
+    local reports <const>, revives <const> = {}, {}
 
     if #ids > 0 then
-        local players <const> = MySQL.query.await([[
-            SELECT citizenid, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.callsign')) AS callsign FROM players
-            WHERE citizenid IN (?)
-        ]], { ids })
-
-        for _, row in ipairs(players or {}) do
-            callsigns[row.citizenid] = row.callsign ~= 'NO CALLSIGN' and row.callsign or ''
-        end
-
-        local staff <const> = MySQL.query.await(
-            'SELECT citizenid, certifications FROM ems_staff WHERE citizenid IN (?)',
-            { ids }
-        )
-
-        for _, row in ipairs(staff or {}) do
-            certifications[row.citizenid] = json.decode(row.certifications) or {}
-        end
-
         local filed <const> = MySQL.query.await([[
             SELECT medic_citizenid AS id, COUNT(*) AS n FROM ems_reports
             WHERE status = 'filed' AND medic_citizenid IN (?)
@@ -371,15 +348,16 @@ local function roster()
 
     for i, employee in ipairs(employees) do
         local source <const> = employee.source
+        local callsign <const> = callsigns[employee.citizenid]
         local year <const>, month <const>, day <const> = (employee.joinedAt or ''):match('^(%d+)%-(%d+)%-(%d+)')
 
         staff[i] = {
             citizenid = employee.citizenid,
             name = employee.name,
-            callsign = source and medics.callsign(source) or callsigns[employee.citizenid] or '',
+            callsign = callsign ~= 'NO CALLSIGN' and callsign or '',
             grade = employee.grade,
             rank = employee.rank,
-            certifications = certifications[employee.citizenid] or {},
+            certifications = jobCertifications(certifications[employee.citizenid]),
             status = employee.onDuty and source and medics.status(source) or 'offduty',
             online = employee.online,
             doctor = config.doctorGrades[employee.grade] == true,
@@ -427,16 +405,7 @@ local function saveStaff(source, data)
         if grade and grade >= own.grade then return fail(locale('mdt.give_lower_rank')) end
     end
 
-    local target <const> = medics.sourceOf(citizenid)
-    local player <const> = target and medics.player(target) or Cobalt.Functions.GetOfflinePlayerByCitizenId(citizenid)
-
-    if not player then return fail(locale('mdt.staff_not_found')) end
-
-    player.Functions.SetMetaData('callsign', callsign:upper())
-
-    if player.Offline then
-        player.Functions.Save()
-    end
+    exports.cobalt_core:SetMetaData(citizenid, 'callsign', callsign:upper())
 
     if grade then
         local ok <const>, err <const> = exports.cobalt_management:SetGrade(citizenid, config.job, grade)
@@ -453,10 +422,11 @@ local function saveStaff(source, data)
         end
     end
 
-    MySQL.update.await([[
-        INSERT INTO ems_staff (citizenid, certifications) VALUES (?, ?)
-        ON DUPLICATE KEY UPDATE certifications = VALUES(certifications)
-    ]], { citizenid, json.encode(certs) })
+    local stored <const> = exports.cobalt_core:GetMetaData({ citizenid }, 'certifications')[citizenid]
+    local byJob <const> = type(stored) == 'table' and stored or {}
+
+    byJob[config.job] = certs
+    exports.cobalt_core:SetMetaData(citizenid, 'certifications', byJob)
 
     return OK
 end
@@ -679,13 +649,12 @@ local handlers <const> = {
             end
 
             MySQL.update.await([[
-                INSERT INTO ems_patients (citizenid, blood_type, conditions, emergency_contact, notes)
-                VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE blood_type = VALUES(blood_type), conditions = VALUES(conditions),
+                INSERT INTO ems_patients (citizenid, conditions, emergency_contact, notes)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE conditions = VALUES(conditions),
                     emergency_contact = VALUES(emergency_contact), notes = VALUES(notes)
             ]], {
                 citizenid,
-                text(data.bloodType) and data.bloodType:sub(1, 16) or nil,
                 json.encode(conditions),
                 (text(data.emergencyContact) or ''):sub(1, 120),
                 (text(data.notes) or ''):sub(1, 4000),
@@ -757,7 +726,12 @@ local handlers <const> = {
     getBilling = {
         page = 'billing',
         fn = function()
-            return { stats = billing.stats(), invoices = billing.list() }
+            local totals <const> = billing.totals()
+
+            return {
+                stats = { billedWeek = totals.billed, paidWeek = totals.paid, overdue = totals.overdue },
+                invoices = billing.list(),
+            }
         end,
     },
     createInvoice = {
@@ -766,9 +740,9 @@ local handlers <const> = {
             local citizenid <const> = text(data.citizenid)
             local patientName <const> = citizenid and exports.cobalt_core:GetName(citizenid)
 
-            if not patientName then return fail(locale('beds.pick_patient')) end
+            if not patientName then return fail(locale('mdt.pick_patient')) end
 
-            local id <const>, err <const> = billing.create({
+            local invoice <const>, err <const> = billing.create({
                 citizenid = citizenid --[[@as string]],
                 patientName = patientName,
                 lines = data.lines,
@@ -776,9 +750,9 @@ local handlers <const> = {
                 medic = medics.citizenid(source),
             })
 
-            if id then billing.presentLater(source, id) end
+            if invoice then billing.presentLater(source, invoice.id) end
 
-            return created(id, err)
+            return created(invoice?.id, err)
         end,
     },
     chargeInvoice = {
@@ -794,7 +768,9 @@ local handlers <const> = {
         fn = function(source, data)
             local id <const> = int(data.id) or 0
 
-            if not billing.markPaid(id) then return fail(locale('billing.already_settled')) end
+            local paid <const>, err <const> = billing.pay(id, 'manual')
+
+            if not paid then return fail(err --[[@as string]]) end
 
             exports.cobalt_core:LogPlayer(source, 'ems.invoice_marked_paid', ('Marked INV-%d paid without a charge'):format(id))
 
@@ -816,41 +792,6 @@ local handlers <const> = {
             exports.cobalt_core:LogPlayer(source, 'ems.invoice_void', ('Voided INV-%d'):format(id), { reason = reason })
 
             return OK
-        end,
-    },
-    getBeds = {
-        fn = function()
-            return { hospitals = beds.overview(), waiting = beds.waiting() }
-        end,
-    },
-    admit = {
-        permission = 'admitDischarge',
-        fn = function(source, data)
-            return created(beds.admit(data, medics.name(source)))
-        end,
-    },
-    discharge = {
-        permission = 'admitDischarge',
-        fn = function(_, data)
-            return beds.discharge(int(data.id) or 0) and OK or fail(locale('mdt.already_discharged'))
-        end,
-    },
-    moveBed = {
-        permission = 'admitDischarge',
-        fn = function(_, data)
-            local ok <const>, err <const> = beds.move(int(data.id) or 0, text(data.hospital) or '', int(data.bed) or 0)
-
-            return ok and OK or fail(err or locale('mdt.move_failed'))
-        end,
-    },
-    saveWardNotes = {
-        fn = function(_, data)
-            return beds.saveNotes(int(data.id) or 0, text(data.notes) or '') and OK or fail(locale('mdt.admission_not_found'))
-        end,
-    },
-    seePatient = {
-        fn = function(_, data)
-            return beds.see(int(data.id) or 0) and OK or fail(locale('mdt.left_queue'))
         end,
     },
     getRoster = { fn = roster },

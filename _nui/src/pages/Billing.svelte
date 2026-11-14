@@ -198,7 +198,7 @@
         <div class="flex min-h-0 flex-1 flex-col gap-4.5 overflow-y-auto p-6" in:crossfade>
           <div class="flex flex-col gap-1">
             <span class="text-13 text-muted-foreground tabular-nums">
-              {selected.paidAt !== null ? t('ui.billing.heading_paid', invoiceNumber(selected.id), shortDate(selected.createdAt), shortDate(selected.paidAt)) : t('ui.billing.heading', invoiceNumber(selected.id), shortDate(selected.createdAt))}
+              {selected.paidAt != null ? t('ui.billing.heading_paid', invoiceNumber(selected.id), shortDate(selected.createdAt), shortDate(selected.paidAt)) : t('ui.billing.heading', invoiceNumber(selected.id), shortDate(selected.createdAt))}
             </span>
             <button type="button" class="text-left text-xl font-semibold tracking-[-0.01em] hover:text-cobalt-foreground" onclick={() => selected && mdt.openPatient(selected.citizenid)}>{selected.patientName}</button>
           </div>
@@ -207,7 +207,7 @@
               <Clock size="1rem" class="shrink-0 text-destructive" />
               <div class="flex flex-col gap-0.5">
                 <span class="text-sm font-medium">{t('ui.billing.overdue_by', plural(daysOverdue(selected), 'ui.plural.days'))}</span>
-                {#if selected.declinedAt !== null}
+                {#if selected.declinedAt != null}
                   <span class="text-13 text-muted-foreground">{t('ui.billing.declined', shortDate(selected.declinedAt))}</span>
                 {/if}
               </div>

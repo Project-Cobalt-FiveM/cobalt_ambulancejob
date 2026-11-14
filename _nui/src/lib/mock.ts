@@ -1,9 +1,11 @@
 import type { MockHandlers } from './nui';
 import { nowSeconds } from './format';
 import type {
-  Admission,
+  BedOccupant,
+  BedUse,
   DeathScreen,
   Call,
+  HospitalBeds,
   Invoice,
   Medic,
   Messages,
@@ -18,7 +20,6 @@ import type {
   StaffMember,
   Template,
   Treatment,
-  WaitingPatient,
 } from './types';
 
 const now = Math.floor(Date.now() / 1000);
@@ -35,7 +36,6 @@ function allPermissions(value: boolean): Permissions {
     editPatients: value,
     writePrescriptions: value,
     prescribeControlled: value,
-    admitDischarge: value,
     useDefib: value,
     sendInvoices: value,
     voidInvoices: value,
@@ -60,7 +60,7 @@ const medic: Medic = trainee
       department: { label: 'EMS', subtitle: 'City Of Los Santos' },
       status: 'available',
       permissions: { ...allPermissions(false), writeReports: true, useDefib: true },
-      pages: ['dashboard', 'dispatch', 'patients', 'reports', 'beds', 'roster'],
+      pages: ['dashboard', 'dispatch', 'patients', 'reports', 'roster'],
       locked: [
         { page: 'prescriptions', rank: 'EMT' },
         { page: 'billing', rank: 'EMT' },
@@ -77,7 +77,7 @@ const medic: Medic = trainee
       department: { label: 'EMS', subtitle: 'City Of Los Santos' },
       status: 'available',
       permissions: allPermissions(true),
-      pages: ['dashboard', 'dispatch', 'patients', 'reports', 'prescriptions', 'billing', 'beds', 'roster', 'management'],
+      pages: ['dashboard', 'dispatch', 'patients', 'reports', 'prescriptions', 'billing', 'roster', 'management'],
       locked: [],
       trainee: false,
     };
@@ -105,7 +105,7 @@ const downCall: Call = {
         patient: {
           citizenid: 'LMX20391',
           name: 'Marcus Webb',
-          bloodType: 'O negative',
+          bloodType: 'O-',
           state: 'down',
           bleedsOutAt: now + 161,
           injuries: [
@@ -181,10 +181,9 @@ const patients: PatientSummary[] = [
     sex: 'male',
     dob: '1990-07-09',
     age: 36,
-    bloodType: 'O negative',
+    bloodType: 'O-',
     state: 'down',
     online: true,
-    admission: null,
     balance: 0,
     conditions: ['Asthma', 'Old left knee injury'],
     lastTreated: { at: now - 22 * day, summary: 'broken arm' },
@@ -195,10 +194,9 @@ const patients: PatientSummary[] = [
     sex: 'female',
     dob: '1994-02-22',
     age: 32,
-    bloodType: 'A positive',
+    bloodType: 'A+',
     state: 'alive',
     online: true,
-    admission: 'Admitted, bed 2',
     balance: 1080,
     conditions: [],
     lastTreated: { at: now - day, summary: 'broken ribs' },
@@ -209,10 +207,8 @@ const patients: PatientSummary[] = [
     sex: 'male',
     dob: '1971-12-03',
     age: 54,
-    bloodType: null,
     state: 'alive',
     online: false,
-    admission: null,
     balance: 650,
     conditions: [],
     lastTreated: { at: now - 13 * day, summary: 'fractured ribs' },
@@ -238,10 +234,10 @@ const keisha: ReportSummary = { id: 430, citizenid: 'KMN11823', patientName: 'Ke
 const armReport: ReportSummary = { id: 418, citizenid: 'LMX20391', patientName: 'Marcus Webb', summary: 'Fractured right arm', detail: 'Splint, 2 doses of morphine', medic: 'Amara Osei', medicCitizenid: 'AMO22871', outcome: 'scene', status: 'filed', billing: 'billed', billed: 300, createdAt: now - 22 * day };
 
 const reports: ReportSummary[] = [
-  { id: 431, citizenid: 'LMX20391', patientName: 'Marcus Webb', summary: 'Gunshot to torso, fractured left leg', detail: '', medic: 'Jordan Hale', medicCitizenid: 'JHL30112', outcome: 'admitted', status: 'draft', billing: 'pending', billed: null, createdAt: now - 6 * minute },
+  { id: 431, citizenid: 'LMX20391', patientName: 'Marcus Webb', summary: 'Gunshot to torso, fractured left leg', detail: '', medic: 'Jordan Hale', medicCitizenid: 'JHL30112', outcome: 'transported', status: 'draft', billing: 'pending', billed: null, createdAt: now - 6 * minute },
   keisha,
   { id: 429, citizenid: null, patientName: 'Unknown male', summary: 'Overdose, naloxone given', detail: 'Naloxone', medic: 'Noah Brandt', medicCitizenid: 'NBR41901', outcome: 'scene', status: 'filed', billing: 'waived', billed: null, createdAt: now - 3 * hour },
-  { id: 428, citizenid: 'RDG77310', patientName: 'Rosa Delgado', summary: 'Fractured right leg, motorbike crash', detail: 'Splint, ibuprofen', medic: 'Sam Kowalski', medicCitizenid: 'SKW90012', outcome: 'admitted', status: 'filed', billing: 'billed', billed: 980, createdAt: now - 4 * hour },
+  { id: 428, citizenid: 'RDG77310', patientName: 'Rosa Delgado', summary: 'Fractured right leg, motorbike crash', detail: 'Splint, ibuprofen', medic: 'Sam Kowalski', medicCitizenid: 'SKW90012', outcome: 'transported', status: 'filed', billing: 'billed', billed: 980, createdAt: now - 4 * hour },
   { id: 427, citizenid: 'TKL31008', patientName: 'Trevor Kline', summary: 'Self respawn after bleed-out, no medic', detail: '', medic: 'Front desk', medicCitizenid: null, outcome: 'respawned', status: 'filed', billing: 'billed', billed: 200, createdAt: now - 5 * hour },
   armReport,
 ];
@@ -259,48 +255,53 @@ const reportDetail: Report = {
   narrative: 'Second-degree burns to both forearms from a pan fire. Cooled, dressed and given pain relief on scene, then driven to Pillbox for review.',
   invoice: { id: 2207, status: 'paid' },
   sharedWithPolice: false,
-  bloodType: 'B positive',
+  bloodType: 'B+',
 };
 
 const invoices: Invoice[] = [
-  { id: 2214, citizenid: 'PQA80217', patientName: 'Dennis Webber', reportId: 402, summary: 'Report T-402, fractured ribs', lines: [{ label: 'Fracture care, ribs', amount: 400 }, { label: 'Ambulance transport', amount: 250 }], amount: 650, status: 'overdue', dueAt: now - 5 * day, createdAt: now - 12 * day, declinedAt: now - 5 * day, paidAt: null, voidReason: null },
-  { id: 2219, citizenid: 'SVG10292', patientName: 'Sofia Varga', reportId: 409, summary: 'Report T-409, overdose', lines: [{ label: 'Overdose care', amount: 540 }], amount: 540, status: 'overdue', dueAt: now - 2 * day, createdAt: now - 9 * day, declinedAt: now - 2 * day, paidAt: null, voidReason: null },
-  { id: 2224, citizenid: 'RDG77310', patientName: 'Rosa Delgado', reportId: 428, summary: 'Report T-428, fractured leg', lines: [{ label: 'Splint a fracture', amount: 150 }, { label: 'Admission, 1 night', amount: 580 }, { label: 'Ambulance transport', amount: 250 }], amount: 980, status: 'unpaid', dueAt: now + 6 * day, createdAt: now - 4 * hour, declinedAt: null, paidAt: null, voidReason: null },
-  { id: 2226, citizenid: 'TKL31008', patientName: 'Trevor Kline', reportId: 426, summary: 'Report T-426, stitches', lines: [{ label: 'Stitches', amount: 200 }], amount: 200, status: 'unpaid', dueAt: now + 7 * day, createdAt: now - day, declinedAt: null, paidAt: null, voidReason: null },
-  { id: 2227, citizenid: 'RKD55120', patientName: 'Tasha Webb', reportId: null, summary: 'Admission, 2 nights', lines: [{ label: 'Admission, 2 nights', amount: 1080 }], amount: 1080, status: 'unpaid', dueAt: now + 7 * day, createdAt: now - day, declinedAt: null, paidAt: null, voidReason: null },
-  { id: 2207, citizenid: 'KMN11823', patientName: 'Keisha Monroe', reportId: 430, summary: 'Report T-430, burns', lines: [{ label: 'Burn dressing x2', amount: 360 }, { label: 'Ambulance transport', amount: 180 }], amount: 540, status: 'paid', dueAt: now + 5 * day, createdAt: now - 2 * hour, declinedAt: null, paidAt: now - 2 * hour, voidReason: null },
-  { id: 2190, citizenid: 'LMX20391', patientName: 'Marcus Webb', reportId: 418, summary: 'Report T-418, fractured arm', lines: [{ label: 'Splint a fracture', amount: 150 }, { label: 'Medications, 2', amount: 150 }], amount: 300, status: 'paid', dueAt: now - 15 * day, createdAt: now - 22 * day, declinedAt: null, paidAt: now - 22 * day, voidReason: null },
+  { id: 2214, citizenid: 'PQA80217', patientName: 'Dennis Webber', reportId: 402, summary: 'Report T-402, fractured ribs', lines: [{ label: 'Fracture care, ribs', amount: 400 }, { label: 'Ambulance transport', amount: 250 }], amount: 650, status: 'overdue', dueAt: now - 5 * day, createdAt: now - 12 * day, declinedAt: now - 5 * day },
+  { id: 2219, citizenid: 'SVG10292', patientName: 'Sofia Varga', reportId: 409, summary: 'Report T-409, overdose', lines: [{ label: 'Overdose care', amount: 540 }], amount: 540, status: 'overdue', dueAt: now - 2 * day, createdAt: now - 9 * day, declinedAt: now - 2 * day },
+  { id: 2224, citizenid: 'RDG77310', patientName: 'Rosa Delgado', reportId: 428, summary: 'Report T-428, fractured leg', lines: [{ label: 'Splint a fracture', amount: 150 }, { label: 'X-ray and cast', amount: 580 }, { label: 'Ambulance transport', amount: 250 }], amount: 980, status: 'unpaid', dueAt: now + 6 * day, createdAt: now - 4 * hour },
+  { id: 2226, citizenid: 'TKL31008', patientName: 'Trevor Kline', reportId: 426, summary: 'Report T-426, stitches', lines: [{ label: 'Stitches', amount: 200 }], amount: 200, status: 'unpaid', dueAt: now + 7 * day, createdAt: now - day },
+  { id: 2227, citizenid: 'RKD55120', patientName: 'Tasha Webb', summary: 'Medical care', lines: [{ label: 'Rib fracture care', amount: 680 }, { label: 'Pain relief', amount: 400 }], amount: 1080, status: 'unpaid', dueAt: now + 7 * day, createdAt: now - day },
+  { id: 2207, citizenid: 'KMN11823', patientName: 'Keisha Monroe', reportId: 430, summary: 'Report T-430, burns', lines: [{ label: 'Burn dressing x2', amount: 360 }, { label: 'Ambulance transport', amount: 180 }], amount: 540, status: 'paid', dueAt: now + 5 * day, createdAt: now - 2 * hour, paidAt: now - 2 * hour },
+  { id: 2190, citizenid: 'LMX20391', patientName: 'Marcus Webb', reportId: 418, summary: 'Report T-418, fractured arm', lines: [{ label: 'Splint a fracture', amount: 150 }, { label: 'Medications, 2', amount: 150 }], amount: 300, status: 'paid', dueAt: now - 15 * day, createdAt: now - 22 * day, paidAt: now - 22 * day },
+  { id: 2185, citizenid: 'TKL31008', patientName: 'Trevor Kline', reportId: 401, summary: 'Report T-401, cut hand', lines: [{ label: 'Stitches', amount: 200 }], amount: 200, status: 'void', dueAt: now - 20 * day, createdAt: now - 27 * day, voidReason: 'Treated during a training drill' },
 ];
 
 const prescriptions: Prescription[] = [
-  { id: 1182, citizenid: 'LMX20391', patientName: 'Marcus Webb', medication: 'Salbutamol inhaler', dose: '2 puffs when short of breath', reason: 'Asthma', refills: 3, refillsUsed: 2, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 36 * day, endsAt: now + 24 * day, status: 'active', fills: [{ pharmacy: 'Pillbox pharmacy', at: now - 14 * day }, { pharmacy: 'Pillbox pharmacy', at: now - 35 * day }] },
-  { id: 1190, citizenid: 'RDG77310', patientName: 'Rosa Delgado', medication: 'Ibuprofen 400 mg', dose: 'Every 8 hours with food', reason: 'Fractured right leg', refills: 1, refillsUsed: 0, controlled: false, prescriber: 'Dr. Elena Vasquez', createdAt: now - 3 * hour, endsAt: now + day, status: 'active', fills: [] },
-  { id: 1188, citizenid: 'KMN11823', patientName: 'Keisha Monroe', medication: 'Silver sulfadiazine cream', dose: 'On burns twice a day', reason: 'Burns', refills: 2, refillsUsed: 1, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 2 * hour, endsAt: now + 13 * day, status: 'active', fills: [{ pharmacy: 'Pillbox pharmacy', at: now - hour }] },
-  { id: 1185, citizenid: 'RKD55120', patientName: 'Tasha Webb', medication: 'Oxycodone 5 mg', dose: 'Controlled, one tablet every 6 hours', reason: 'Broken ribs', refills: 0, refillsUsed: 0, controlled: true, prescriber: 'Dr. Elena Vasquez', createdAt: now - day, endsAt: now + 2 * day, status: 'active', fills: [] },
-  { id: 1101, citizenid: 'TKL31008', patientName: 'Trevor Kline', medication: 'Amoxicillin 500 mg', dose: 'Three times a day', reason: 'Infected cut', refills: 0, refillsUsed: 0, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 40 * day, endsAt: now - 30 * day, status: 'expired', fills: [] },
+  { id: 1182, citizenid: 'LMX20391', patientName: 'Marcus Webb', medication: 'Salbutamol inhaler', dose: '2 puffs when short of breath', reason: 'Asthma', refills: 3, refillsUsed: 2, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 36 * day, endsAt: now + 24 * day, status: 'active', lastFill: { pharmacy: 'Pillbox pharmacy', at: now - 14 * day } },
+  { id: 1190, citizenid: 'RDG77310', patientName: 'Rosa Delgado', medication: 'Ibuprofen 400 mg', dose: 'Every 8 hours with food', reason: 'Fractured right leg', refills: 1, refillsUsed: 0, controlled: false, prescriber: 'Dr. Elena Vasquez', createdAt: now - 3 * hour, endsAt: now + day, status: 'active' },
+  { id: 1188, citizenid: 'KMN11823', patientName: 'Keisha Monroe', medication: 'Silver sulfadiazine cream', dose: 'On burns twice a day', reason: 'Burns', refills: 2, refillsUsed: 1, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 2 * hour, endsAt: now + 13 * day, status: 'active', lastFill: { pharmacy: 'Pillbox pharmacy', at: now - hour } },
+  { id: 1185, citizenid: 'RKD55120', patientName: 'Tasha Webb', medication: 'Oxycodone 5 mg', dose: 'Controlled, one tablet every 6 hours', reason: 'Broken ribs', refills: 0, refillsUsed: 0, controlled: true, prescriber: 'Dr. Elena Vasquez', createdAt: now - day, endsAt: now + 2 * day, status: 'active' },
+  { id: 1101, citizenid: 'TKL31008', patientName: 'Trevor Kline', medication: 'Amoxicillin 500 mg', dose: 'Three times a day', reason: 'Infected cut', refills: 0, refillsUsed: 0, controlled: false, prescriber: 'Dr. Ravi Menon', createdAt: now - 40 * day, endsAt: now - 30 * day, status: 'expired' },
 ];
 
-function admission(id: number, citizenid: string, patientName: string, bed: number, reason: string, attending: string, admittedAt: number, notes = ''): Admission {
-  return { id, citizenid, patientName, hospital: 'pillbox', bed, reason, attending, admittedAt, plannedDischargeAt: now + 20 * hour, reportId: bed === 1 ? 428 : null, notes, dischargedAt: null };
+function occupant(citizenid: string, name: string, use: BedUse, state: BedOccupant['state'], minutes: number): BedOccupant {
+  return { citizenid, name, use, state, since: now - minutes * minute };
 }
 
-const rosa = admission(51, 'RDG77310', 'Rosa Delgado', 1, 'Fractured right leg', 'Dr. Elena Vasquez', now - 3 * hour, 'Cast fitted at 12:15. Pain controlled with ibuprofen. Walks with crutches.');
+function ward(id: string, label: string, short: string, size: number, occupants: Record<number, BedOccupant>): HospitalBeds {
+  const beds = Array.from({ length: size }, (_, offset) => ({ index: offset + 1, label: `Bed ${offset + 1}`, occupant: occupants[offset + 1] }));
 
-const tasha = admission(50, 'RKD55120', 'Tasha Webb', 2, 'Broken ribs', 'Dr. Elena Vasquez', now - 26 * hour);
+  return { id, label, short, total: size, occupied: beds.filter((bed) => bed.occupant).length, beds };
+}
 
-const pillboxAdmissions: (Admission | null)[] = [
-  rosa,
-  tasha,
-  admission(52, 'KMN11823', 'Keisha Monroe', 3, 'Burns review', 'Dr. Ravi Menon', now - hour),
-  admission(53, 'DPR90021', 'Darnell Price', 4, 'Gunshot, under LSPD guard', 'Dr. Ravi Menon', now - 2 * hour),
-  null,
-  null,
-];
+const rosaBed = occupant('RDG77310', 'Rosa Delgado', 'medic', 'alive', 3 * 60);
+const tashaBed = occupant('RKD55120', 'Tasha Webb', 'rest', 'alive', 26);
+const marcusBed = occupant('LMX20391', 'Marcus Webb', 'medic', 'down', 4);
 
-const waiting: WaitingPatient[] = [
-  { id: 1, citizenid: 'LBR20019', name: 'Leon Brooks', reason: 'Checked in at the kiosk, cut hand', since: now - 4 * minute },
-  { id: 2, citizenid: 'PSH88120', name: 'Priya Shah', reason: 'Prescription renewal', since: now - minute },
-];
+function hospitalBeds(changed = false): HospitalBeds[] {
+  const pillbox: Record<number, BedOccupant> = changed
+    ? { 1: rosaBed, 2: tashaBed, 4: { ...marcusBed, state: 'alive' }, 9: occupant('PSH88120', 'Priya Shah', 'checkIn', 'alive', 0) }
+    : { 1: rosaBed, 2: tashaBed, 4: marcusBed, 7: occupant('DVN44120', 'Devon Hale', 'checkIn', 'alive', 1) };
+
+  return [
+    ward('pillbox', 'Pillbox Hill Medical', 'Pillbox Hill', 12, pillbox),
+    ward('sandy', 'Sandy Shores Medical', 'Sandy Shores', 4, { 3: occupant('LBR20019', 'Leon Brooks', 'medic', 'knocked_out', 9) }),
+    ward('paleto', 'Paleto Bay Care Center', 'Paleto Bay', 0, {}),
+  ];
+}
 
 const staff: StaffMember[] = [
   { citizenid: 'HCR10001', name: 'Dr. Helen Carter', callsign: 'Med 1', grade: 4, rank: 'Chief of medicine', certifications: ['fto', 'life'], status: 'offduty', online: false, doctor: true, trainee: false, joinedAt: now - 400 * day, hoursOnDuty: 640, reportsFiled: 190, revivesMonth: 4 },
@@ -325,7 +326,6 @@ const ranks: Rank[] = rankNames.map((name, grade) => ({
           writeReports: true,
           useDefib: true,
           editPatients: grade >= 2,
-          admitDischarge: grade >= 2,
           sendInvoices: grade >= 1,
           writePrescriptions: grade >= 3,
           prescribeControlled: grade >= 3,
@@ -355,10 +355,9 @@ function profile(citizenid: string): Patient | null {
     reports: [
       armReport,
       { ...armReport, id: 377, summary: 'Asthma attack', detail: 'Salbutamol nebuliser', medic: 'Jordan Hale', outcome: 'scene', createdAt: now - 36 * day },
-      { ...armReport, id: 341, summary: 'Gunshot, left leg', detail: 'Tourniquet, 2 nights admitted', medic: 'Dr. Elena Vasquez', outcome: 'admitted', createdAt: now - 62 * day },
+      { ...armReport, id: 341, summary: 'Gunshot, left leg', detail: 'Tourniquet, driven to Pillbox', medic: 'Dr. Elena Vasquez', outcome: 'transported', createdAt: now - 62 * day },
     ],
     prescriptions: prescriptions.filter((entry) => entry.citizenid === citizenid),
-    admissions: [{ ...rosa, id: 12, citizenid, patientName: summary.name, reason: 'Gunshot, left leg', admittedAt: now - 62 * day, dischargedAt: now - 60 * day }],
     invoices: invoices.filter((entry) => entry.citizenid === citizenid),
   };
 }
@@ -381,9 +380,9 @@ function draft(citizenid: string | null, callId: number | null): ReportDraft {
     medications: patient ? [7, 8, 9] : [],
     extras: patient ? [5, 10] : [],
     narrative: patient
-      ? 'Found unresponsive on Grove Street with a gunshot wound to the abdomen. Tourniquet and gauze applied, left leg splinted. Admitted at Pillbox.'
+      ? 'Found unresponsive on Grove Street with a gunshot wound to the abdomen. Tourniquet and gauze applied, left leg splinted. Driven to Pillbox and laid on a bed.'
       : '',
-    outcome: 'admitted',
+    outcome: 'transported',
   };
 }
 
@@ -403,13 +402,10 @@ export const handlers: MockHandlers = {
       medicsOnDuty: 6,
       medicsAvailable: 3,
       medicsOnCalls: 3,
-      bedsFree: 9,
-      bedsTotal: 14,
-      hospitals: 3,
       unpaidTotal: 3450,
       unpaidCount: 5,
       overdueCount: 2,
-      training: trainee ? { done: 6, total: 10 } : null,
+      training: trainee ? { done: 6, total: 10 } : undefined,
     },
     onDuty: [
       { citizenid: 'JHL30112', name: 'Jordan Hale', callsign: 'EMS 3', detail: 'Paramedic, ambulance', status: 'enroute' },
@@ -419,11 +415,7 @@ export const handlers: MockHandlers = {
       { citizenid: 'SKW90012', name: 'Sam Kowalski', callsign: 'Air 1', detail: 'Flight medic, helicopter', status: 'available' },
       { citizenid: 'RMN50110', name: 'Dr. Ravi Menon', callsign: '', detail: 'Doctor, Pillbox front desk', status: 'available' },
     ],
-    capacity: [
-      { id: 'pillbox', label: 'Pillbox Hill Medical', free: 2, total: 6, admitted: 4 },
-      { id: 'sandy', label: 'Sandy Shores Medical', free: 4, total: 4, admitted: 0 },
-      { id: 'paleto', label: 'Paleto Bay Care Center', free: 3, total: 4, admitted: 1 },
-    ],
+    hospitals: hospitalBeds(),
   }),
   getCalls: () => calls,
   getDispatchSummary: () => ({ available: 4, onBreak: 1, lastClosedAt: now - 18 * minute }),
@@ -451,19 +443,6 @@ export const handlers: MockHandlers = {
   chargeInvoice: () => ({ ok: false, error: 'Their bank declined the charge' }),
   markInvoicePaid: () => ok,
   voidInvoice: () => ok,
-  getBeds: () => ({
-    hospitals: [
-      { id: 'pillbox', label: 'Pillbox Hill Medical', short: 'Pillbox Hill', beds: pillboxAdmissions.map((entry, index) => ({ index: index + 1, label: `Bed ${index + 1}`, admission: entry, frontDesk: entry || index !== pillboxAdmissions.indexOf(null) ? null : { citizenid: 'DVN44120', patientName: 'Devon Hale', endsAt: now + 11 } })) },
-      { id: 'sandy', label: 'Sandy Shores Medical', short: 'Sandy Shores', beds: [1, 2, 3, 4].map((index) => ({ index, label: `Bed ${index}`, admission: null })) },
-      { id: 'paleto', label: 'Paleto Bay Care Center', short: 'Paleto Bay', beds: [1, 2, 3, 4].map((index) => ({ index, label: `Bed ${index}`, admission: index === 1 ? { ...tasha, id: 60, hospital: 'paleto', bed: 1 } : null })) },
-    ],
-    waiting,
-  }),
-  admit: () => ({ ok: true, id: 70 }),
-  discharge: () => ok,
-  moveBed: () => ok,
-  saveWardNotes: () => ok,
-  seePatient: () => ok,
   getRoster: () => ({
     staff,
     ranks: rankNames.map((name, grade) => ({ grade, name })),
@@ -501,7 +480,7 @@ const routes: Record<string, { page: Medic['pages'][number]; citizenid?: string 
   '#reports': { page: 'reports' },
   '#prescriptions': { page: 'prescriptions' },
   '#billing': { page: 'billing' },
-  '#beds': { page: 'beds' },
+  '#beds': { page: 'dashboard' },
   '#roster': { page: 'roster' },
   '#management': { page: 'management' },
 };
@@ -538,6 +517,12 @@ export function startDeath(): void {
 
   window.postMessage({ action: 'death', data: screen } satisfies Messages, '*');
   if (location.hash === '#laststand') window.postMessage({ action: 'deathHold', data: 9000 } satisfies Messages, '*');
+}
+
+export function startBedUpdates(): void {
+  if (location.hash !== '#beds') return;
+
+  setTimeout(() => window.postMessage({ action: 'bedsChanged', data: hospitalBeds(true) } satisfies Messages, '*'), 3000);
 }
 
 export function startAlerts(): void {

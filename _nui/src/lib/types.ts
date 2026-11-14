@@ -5,7 +5,6 @@ export type Page =
   | 'reports'
   | 'prescriptions'
   | 'billing'
-  | 'beds'
   | 'roster'
   | 'management';
 
@@ -15,7 +14,6 @@ export type Permission =
   | 'editPatients'
   | 'writePrescriptions'
   | 'prescribeControlled'
-  | 'admitDischarge'
   | 'useDefib'
   | 'sendInvoices'
   | 'voidInvoices'
@@ -39,6 +37,8 @@ export type InjuryKind = 'bleeding' | 'fracture' | 'burn' | 'severed';
 export type TreatKind = InjuryKind | 'down';
 
 export type ReviveState = 'alive' | 'knocked_out' | 'down' | 'dead' | 'reviving';
+
+export type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
 
 export type Injury = { bodyPart: BodyPart; kind: InjuryKind };
 
@@ -75,7 +75,7 @@ export type CallNote = { author: string; text: string; time: number };
 export type CallPatient = {
   citizenid: string;
   name: string;
-  bloodType: string | null;
+  bloodType?: BloodType;
   state: ReviveState;
   bleedsOutAt: number | null;
   injuries: Injury[];
@@ -107,7 +107,19 @@ export type OnDutyMedic = {
   status: MedicStatus;
 };
 
-export type HospitalCapacity = { id: string; label: string; free: number; total: number; admitted: number };
+export type BedUse = 'checkIn' | 'medic' | 'rest';
+
+export type BedOccupant = {
+  citizenid: string;
+  name: string;
+  since: number;
+  use: BedUse;
+  state: Exclude<ReviveState, 'reviving'>;
+};
+
+export type BedView = { index: number; label: string; occupant?: BedOccupant };
+
+export type HospitalBeds = { id: string; label: string; short: string; total: number; occupied: number; beds: BedView[] };
 
 export type DashboardStats = {
   openCalls: number;
@@ -115,16 +127,13 @@ export type DashboardStats = {
   medicsOnDuty: number;
   medicsAvailable: number;
   medicsOnCalls: number;
-  bedsFree: number;
-  bedsTotal: number;
-  hospitals: number;
   unpaidTotal: number;
   unpaidCount: number;
   overdueCount: number;
-  training: { done: number; total: number } | null;
+  training?: { done: number; total: number };
 };
 
-export type Dashboard = { stats: DashboardStats; onDuty: OnDutyMedic[]; capacity: HospitalCapacity[] };
+export type Dashboard = { stats: DashboardStats; onDuty: OnDutyMedic[]; hospitals: HospitalBeds[] };
 
 export type DispatchSummary = { available: number; onBreak: number; lastClosedAt: number | null };
 
@@ -136,16 +145,15 @@ export type PatientSummary = {
   sex: Sex;
   dob: string;
   age: number | null;
-  bloodType: string | null;
+  bloodType?: BloodType;
   state: ReviveState;
   online: boolean;
-  admission: string | null;
   balance: number;
   conditions: string[];
   lastTreated: { at: number; summary: string } | null;
 };
 
-export type ReportOutcome = 'scene' | 'transported' | 'admitted' | 'deceased' | 'respawned';
+export type ReportOutcome = 'scene' | 'transported' | 'deceased' | 'respawned';
 
 export type ReportStatus = 'draft' | 'filed';
 
@@ -177,9 +185,9 @@ export type Report = ReportSummary & {
   medications: number[];
   extras: number[];
   narrative: string;
-  invoice: { id: number; status: InvoiceStatus } | null;
+  invoice?: { id: number; status: InvoiceStatus };
   sharedWithPolice: boolean;
-  bloodType: string | null;
+  bloodType?: BloodType;
 };
 
 export type ReportDraft = {
@@ -201,16 +209,16 @@ export type Invoice = {
   id: number;
   citizenid: string;
   patientName: string;
-  reportId: number | null;
+  reportId?: number;
   summary: string;
   lines: InvoiceLine[];
   amount: number;
   status: InvoiceStatus;
   dueAt: number;
   createdAt: number;
-  declinedAt: number | null;
-  paidAt: number | null;
-  voidReason: string | null;
+  declinedAt?: number;
+  paidAt?: number;
+  voidReason?: string;
 };
 
 export type Billing = { stats: { billedWeek: number; paidWeek: number; overdue: number }; invoices: Invoice[] };
@@ -233,7 +241,7 @@ export type Prescription = {
   createdAt: number;
   endsAt: number;
   status: PrescriptionStatus;
-  fills: PrescriptionFill[];
+  lastFill?: PrescriptionFill;
 };
 
 export type PrescriptionInput = {
@@ -246,40 +254,6 @@ export type PrescriptionInput = {
   controlled: boolean;
 };
 
-export type Admission = {
-  id: number;
-  citizenid: string;
-  patientName: string;
-  hospital: string;
-  bed: number;
-  reason: string;
-  attending: string;
-  admittedAt: number;
-  plannedDischargeAt: number | null;
-  reportId: number | null;
-  notes: string;
-  dischargedAt: number | null;
-};
-
-export type FrontDeskPatient = { citizenid: string; patientName: string; endsAt: number };
-
-export type Bed = { index: number; label: string; admission: Admission | null; frontDesk?: FrontDeskPatient | null };
-
-export type Hospital = { id: string; label: string; short: string; beds: Bed[] };
-
-export type WaitingPatient = { id: number; citizenid: string; name: string; reason: string; since: number };
-
-export type Beds = { hospitals: Hospital[]; waiting: WaitingPatient[] };
-
-export type AdmitInput = {
-  citizenid: string;
-  hospital: string;
-  bed: number;
-  reason: string;
-  dischargeHours: number | null;
-  reportId: number | null;
-};
-
 export type Patient = PatientSummary & {
   phone: string;
   emergencyContact: string;
@@ -287,13 +261,11 @@ export type Patient = PatientSummary & {
   injuries: Injury[];
   reports: ReportSummary[];
   prescriptions: Prescription[];
-  admissions: Admission[];
   invoices: Invoice[];
 };
 
 export type PatientInput = {
   citizenid: string;
-  bloodType: string | null;
   conditions: string[];
   emergencyContact: string;
   notes: string;
@@ -375,7 +347,7 @@ export type Messages =
   | { action: 'alertClear'; data: { id: number } }
   | { action: 'death'; data: DeathScreen | false }
   | { action: 'deathHold'; data: number | false }
-  | { action: 'bedsChanged' };
+  | { action: 'bedsChanged'; data: HospitalBeds[] };
 
 export type Boot = { locales: Record<string, string>; bleedoutSeconds: number };
 
@@ -412,12 +384,6 @@ export type Requests = {
   chargeInvoice: [{ id: number }, Result];
   markInvoicePaid: [{ id: number }, Result];
   voidInvoice: [{ id: number; reason: string }, Result];
-  getBeds: [void, Beds];
-  admit: [AdmitInput, Created];
-  discharge: [{ id: number }, Result];
-  moveBed: [{ id: number; hospital: string; bed: number }, Result];
-  saveWardNotes: [{ id: number; notes: string }, Result];
-  seePatient: [{ id: number }, Result];
   getRoster: [void, Roster];
   saveStaff: [StaffInput, Result];
   getRanks: [void, Rank[]];

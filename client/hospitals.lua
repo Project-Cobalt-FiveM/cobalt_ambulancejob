@@ -5,12 +5,12 @@ local hospitals <const> = require 'shared.hospitals'
 local core <const> = exports.cobalt_core
 
 local REVIVE <const> = states.revive
+local CARRY <const> = states.carry
 local CHECK_IN_KEY <const> = config.checkIn.key
 local DESK_PROMPT_RANGE <const> = 2.0
-local ALIVE_WAIT_MS <const> = 5000
-local REVIVE_SETTLE_MS <const> = 250
+local BED_FADE_MS <const> = 400
 
----@type { hospital: string, index: integer, exit?: vector4 }?
+---@type { hospital: string, index: integer, exit: vector4 }?
 local onBed
 
 ---@type table<string, integer>
@@ -19,7 +19,7 @@ local doctors <const> = {}
 ---@type integer[]
 local blips <const> = {}
 
-local recovering = false
+local treating = false
 local checkingIn = false
 
 ---@param hospitalId string
@@ -27,11 +27,6 @@ local checkingIn = false
 ---@return Bed?
 local function bedOf(hospitalId, index)
     return hospitals.get(hospitalId)?.beds[index]
-end
-
----@return boolean
-local function waitUntilAlive()
-    return pcall(lib.waitFor, function() return patient.revive().state == REVIVE.ALIVE or nil end, nil, ALIVE_WAIT_MS)
 end
 
 local function healFully()
@@ -45,63 +40,62 @@ end
 local function layOn(coords)
     local ped <const> = cache.ped
 
+    if IsEntityAttached(ped) then DetachEntity(ped, true, false) end
+
     SetEntityCoords(ped, coords.x, coords.y, coords.z, false, false, false, false)
     SetEntityHeading(ped, coords.w)
     FreezeEntityPosition(ped, true)
     lib.playAnim(ped, config.bedAnim.dict, config.bedAnim.clip, 4.0, -4.0, -1, config.bedAnim.flag)
 end
 
-local function getOff()
-    if not onBed then return end
+---@param hospitalId string
+---@param index integer
+local function lieDown(hospitalId, index)
+    local bed <const> = bedOf(hospitalId, index)
+    local coords <const>, exit <const> = bed?.coords, bed?.exit
 
-    local exit <const> = onBed.exit
+    if not coords or not exit then return end
+
+    onBed = { hospital = hospitalId, index = index, exit = exit }
+
+    patient.behindFade(BED_FADE_MS, function()
+        if onBed?.hospital == hospitalId and onBed?.index == index then layOn(coords) end
+    end)
+end
+
+local function standUp()
     local ped <const> = cache.ped
 
     onBed = nil
+    treating = false
     ClearPedTasks(ped)
     FreezeEntityPosition(ped, false)
+end
+
+local function getOffBed()
+    local exit <const> = onBed?.exit
 
     if not exit then return end
 
-    SetEntityCoords(ped, exit.x, exit.y, exit.z, false, false, false, false)
-    SetEntityHeading(ped, exit.w)
+    patient.behindFade(BED_FADE_MS, function()
+        standUp()
+        SetEntityCoords(cache.ped, exit.x, exit.y, exit.z, false, false, false, false)
+        SetEntityHeading(cache.ped, exit.w)
+    end)
+
+    TriggerServerEvent('cobalt_ambulancejob:server:leaveBed')
 end
 
----@param hospitalId string
----@param index integer
----@param bed Bed
-local function placeOnBed(hospitalId, index, bed)
-    onBed = { hospital = hospitalId, index = index, exit = bed.exit }
-    layOn(bed.coords --[[@as vector4]])
+---@return boolean
+local function carryingPatient()
+    return LocalPlayer.state.fireCarry?.victim ~= nil
 end
 
----@param hospital Hospital
----@param index integer
----@param bed Bed
-local function layOnBed(hospital, index, bed)
-    if onBed or patient.revive().state ~= REVIVE.ALIVE then return end
+---@return boolean
+local function canLieDown()
+    if onBed or patient.revive().state ~= REVIVE.ALIVE then return false end
 
-    placeOnBed(hospital.id, index, bed)
-end
-
----@return string?
----@return boolean cancelled
-local function askReason()
-    if patient.isIncapacitated() or not lib.callback.await('cobalt_ambulancejob:medicsAvailable', false) then
-        return nil, false
-    end
-
-    local answers <const> = core:InputDialog(locale('hospital.check_in'), {
-        {
-            type = 'input',
-            label = locale('hospital.what_happened'),
-            placeholder = locale('hospital.what_happened_placeholder'),
-            required = true,
-            max = 120,
-        },
-    })
-
-    return answers?[1], answers == nil
+    return (LocalPlayer.state.fireCarry?.state or CARRY.NONE) == CARRY.NONE
 end
 
 ---@param hospital Hospital
@@ -109,13 +103,6 @@ local function checkIn(hospital)
     if checkingIn or onBed then return end
 
     checkingIn = true
-
-    local reason <const>, cancelled <const> = askReason()
-
-    if cancelled then
-        checkingIn = false
-        return
-    end
 
     local started <const>, seconds <const> = lib.callback.await('cobalt_ambulancejob:checkInStart', false, hospital.id)
 
@@ -127,9 +114,8 @@ local function checkIn(hospital)
             useWhileDead = true,
             disable = { move = true, combat = true, car = true },
         })
-        local reply <const> = done and 'cobalt_ambulancejob:checkInFinish' or 'cobalt_ambulancejob:checkInCancel'
 
-        lib.callback.await(reply, false, reason)
+        lib.callback.await(done and 'cobalt_ambulancejob:checkInFinish' or 'cobalt_ambulancejob:checkInCancel', false)
     end
 
     checkingIn = false
@@ -275,7 +261,7 @@ local function addZones(hospital)
     end
 
     for index, bed in ipairs(hospital.beds) do
-        if bed.coords then
+        if bed.coords and bed.exit then
             exports.ox_target:addSphereZone({
                 coords = bed.coords.xyz,
                 radius = 1.0,
@@ -284,17 +270,30 @@ local function addZones(hospital)
                         name = ('cobalt_ambulancejob:bed_%s_%d'):format(hospital.id, index),
                         label = locale('hospital.lie_on_bed', bed.label:lower()),
                         icon = 'fas fa-bed',
-                        canInteract = function() return onBed == nil and patient.revive().state == REVIVE.ALIVE end,
-                        onSelect = function() layOnBed(hospital, index, bed) end,
+                        canInteract = canLieDown,
+                        onSelect = function()
+                            TriggerServerEvent('cobalt_ambulancejob:server:lieOnBed', hospital.id, index)
+                        end,
+                    },
+                    {
+                        name = ('cobalt_ambulancejob:bed_patient_%s_%d'):format(hospital.id, index),
+                        label = locale('hospital.lay_patient', bed.label:lower()),
+                        icon = 'fas fa-bed-pulse',
+                        canInteract = function() return carryingPatient() and patient.isOnDutyMedic() end,
+                        onSelect = function()
+                            TriggerServerEvent('cobalt_ambulancejob:server:layOnBed', hospital.id, index)
+                        end,
                     },
                     {
                         name = ('cobalt_ambulancejob:bed_off_%s_%d'):format(hospital.id, index),
                         label = locale('hospital.get_off_bed'),
                         icon = 'fas fa-arrow-up-from-bracket',
                         canInteract = function()
-                            return not recovering and onBed?.hospital == hospital.id and onBed?.index == index
+                            if treating or patient.isIncapacitated() then return false end
+
+                            return onBed?.hospital == hospital.id and onBed?.index == index
                         end,
-                        onSelect = getOff,
+                        onSelect = getOffBed,
                     },
                 },
             })
@@ -323,25 +322,10 @@ for _, hospital in ipairs(hospitals.list()) do
     addZones(hospital)
 end
 
-RegisterNetEvent('cobalt_ambulancejob:client:bedTreatment', function(hospitalId, index, seconds)
-    local bed <const> = bedOf(hospitalId, index)
+RegisterNetEvent('cobalt_ambulancejob:client:bedTreatment', function(seconds)
+    if type(seconds) ~= 'number' then return end
 
-    if not bed?.coords or type(seconds) ~= 'number' then return end
-
-    recovering = true
-
-    if not waitUntilAlive() then
-        recovering = false
-        return
-    end
-
-    Wait(REVIVE_SETTLE_MS)
-
-    patient.behindFade(500, function()
-        getOff()
-        healFully()
-        placeOnBed(hospitalId, index, bed)
-    end)
+    treating = true
 
     pcall(core.Progressbar, core, {
         label = locale('hospital.bed_treatment'),
@@ -352,92 +336,27 @@ RegisterNetEvent('cobalt_ambulancejob:client:bedTreatment', function(hospitalId,
 end)
 
 RegisterNetEvent('cobalt_ambulancejob:client:bedTreatmentDone', function()
-    waitUntilAlive()
+    treating = false
     healFully()
-    recovering = false
-    patient.behindFade(400, getOff)
+    getOffBed()
 end)
 
-RegisterNetEvent('cobalt_ambulancejob:client:admitted', function(hospitalId, index)
-    local bed <const> = bedOf(hospitalId, index)
+AddStateBagChangeHandler('bed', ('player:%s'):format(cache.serverId), function(_, _, value)
+    SetTimeout(0, function()
+        if value then return lieDown(value.hospital, value.index) end
 
-    getOff()
-
-    if not bed?.coords or #(GetEntityCoords(cache.ped) - bed.coords.xyz) > 50.0 then return end
-
-    placeOnBed(hospitalId, index, bed)
-end)
-
----@param hospitalId string
----@param index? integer
----@param seconds integer
-local function recover(hospitalId, index, seconds)
-    local hospital <const> = hospitals.get(hospitalId)
-    local bed <const> = index and bedOf(hospitalId, index)
-
-    if not hospital then return end
-
-    recovering = true
-
-    if not waitUntilAlive() then
-        recovering = false
-        return
-    end
-
-    local placed <const> = patient.behindFade(500, function()
-        getOff()
-        Wait(0)
-
-        if bed and bed.coords then return placeOnBed(hospitalId, index --[[@as integer]], bed) end
-
-        local ped <const> = cache.ped
-        local respawn <const> = hospital.respawn
-
-        SetEntityCoords(ped, respawn.x, respawn.y, respawn.z, false, false, false, false)
-        SetEntityHeading(ped, respawn.w)
+        if onBed then standUp() end
     end)
-
-    if placed then
-        pcall(core.Progressbar, core, {
-            label = locale('hospital.recovering'),
-            duration = seconds * 1000,
-            canCancel = false,
-            disable = { move = true, car = true, combat = true, mouse = false },
-        })
-    end
-
-    recovering = false
-    getOff()
-    ClearPedTasks(cache.ped)
-end
-
-RegisterNetEvent('cobalt_ambulancejob:client:recover', function(hospitalId, index, seconds)
-    if type(hospitalId) ~= 'string' or type(seconds) ~= 'number' then return end
-
-    recover(hospitalId, index, seconds)
-end)
-
-RegisterNetEvent('cobalt_ambulancejob:client:discharged', function()
-    if recovering then return end
-
-    getOff()
-end)
-
-AddStateBagChangeHandler('revive', ('player:%s'):format(cache.serverId), function(_, _, value)
-    if onBed and value and value.state ~= REVIVE.ALIVE then
-        SetTimeout(0, getOff)
-    end
 end)
 
 RegisterNetEvent('cobalt_core:Client:OnPlayerUnload', function()
-    recovering = false
-    getOff()
+    if onBed then standUp() end
 end)
 
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= cache.resource then return end
 
-    getOff()
+    if onBed then standUp() end
 
     for _, ped in pairs(doctors) do
         if DoesEntityExist(ped) then

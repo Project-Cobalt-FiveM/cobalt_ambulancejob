@@ -9,7 +9,6 @@ local REQUESTS <const> = {
     'getReports', 'getReport', 'newReport', 'saveReport', 'fileReport', 'shareReport',
     'getPrescriptions', 'createPrescription', 'renewPrescription', 'cancelPrescription',
     'getBilling', 'createInvoice', 'chargeInvoice', 'markInvoicePaid', 'voidInvoice',
-    'getBeds', 'admit', 'discharge', 'moveBed', 'saveWardNotes', 'seePatient',
     'getRoster', 'saveStaff', 'getRanks', 'saveRank', 'getTreatments', 'getItems', 'saveTreatment', 'deleteTreatment',
     'getTemplates', 'saveTemplate', 'deleteTemplate', 'getSettings', 'saveSettings',
 }
@@ -194,8 +193,8 @@ waypointKey = lib.addKeybind({
 
 RegisterNetEvent('cobalt_ambulancejob:client:openMdt', Mdt.open)
 
-RegisterNetEvent('cobalt_ambulancejob:client:bedsChanged', function()
-    if Mdt.isOpen then SendNUIMessage({ action = 'bedsChanged' }) end
+RegisterNetEvent('cobalt_ambulancejob:client:bedsChanged', function(hospitals)
+    if Mdt.isOpen then SendNUIMessage({ action = 'bedsChanged', data = hospitals }) end
 end)
 
 RegisterNetEvent('cobalt_ambulancejob:client:waypoint', function(coords)

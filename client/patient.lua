@@ -21,6 +21,12 @@ function Patient.isIncapacitated()
     return Patient.incapacitates(Patient.revive().state)
 end
 
+---True while the server has the player lying in a hospital bed.
+---@return boolean
+function Patient.inBed()
+    return LocalPlayer.state.bed ~= nil
+end
+
 ---Fades the screen out, runs `step`, and always fades back in, even when `step` errors or the fade stalls.
 ---@param ms integer
 ---@param step fun()

@@ -162,19 +162,14 @@
             <Row label={t('ui.common.reason')}>{selected.reason || t('ui.prescriptions.no_reason')}</Row>
             <Row label={t('ui.prescriptions.written')}>{shortDate(selected.createdAt)}, {selected.prescriber}</Row>
             <Row label={t('ui.prescriptions.valid_until')} tone={endingSoon(selected) ? 'warning' : 'default'}>{longDate(selected.endsAt)}</Row>
-          </div>
-          <div class="flex flex-col gap-2">
-            <h3 class="text-sm font-semibold">{t('ui.prescriptions.filled')}</h3>
-            <div class="flex flex-col gap-1.5">
-              {#each selected.fills as fill, index (index)}
-                <div class="flex justify-between rounded-md border border-border px-3 py-2.5 text-13">
-                  <span>{fill.pharmacy}</span>
-                  <span class="text-muted-foreground tabular-nums">{shortDate(fill.at)}</span>
-                </div>
+            <Row label={t('ui.prescriptions.refills_used')}>{t('ui.common.x_of_y', selected.refillsUsed, selected.refills)}</Row>
+            <Row label={t('ui.prescriptions.last_filled')}>
+              {#if selected.lastFill}
+                {shortDate(selected.lastFill.at)}, {selected.lastFill.pharmacy}
               {:else}
-                <p class="text-13 text-muted-foreground">{t('ui.prescriptions.not_filled')}</p>
-              {/each}
-            </div>
+                <span class="text-muted-foreground">{t('ui.prescriptions.not_filled')}</span>
+              {/if}
+            </Row>
           </div>
         </div>
         {#if write && selected.status !== 'cancelled'}

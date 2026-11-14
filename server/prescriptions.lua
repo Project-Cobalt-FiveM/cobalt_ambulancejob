@@ -4,33 +4,14 @@ local Prescriptions <const> = {}
 
 local SELECT <const> = [[
     SELECT rx.id, rx.citizenid, p.fullname, rx.medication, rx.dose, rx.reason, rx.refills, rx.fills,
-        rx.controlled, rx.prescriber_name, rx.status,
-        UNIX_TIMESTAMP(rx.ends_at) AS ends_at, UNIX_TIMESTAMP(rx.created_at) AS created_at
+        rx.last_pharmacy, UNIX_TIMESTAMP(rx.last_filled_at) AS last_filled_at, rx.controlled, rx.prescriber_name,
+        rx.status, UNIX_TIMESTAMP(rx.ends_at) AS ends_at, UNIX_TIMESTAMP(rx.created_at) AS created_at
     FROM ems_prescriptions rx LEFT JOIN players p ON p.citizenid = rx.citizenid
 ]]
 
 ---@param rows table[]
 ---@return table[]
 local function format(rows)
-    local ids <const> = {}
-    local fills <const> = {}
-
-    for i, row in ipairs(rows) do
-        ids[i] = row.id
-    end
-
-    if #ids > 0 then
-        local filled <const> = MySQL.query.await([[
-            SELECT prescription_id, pharmacy, UNIX_TIMESTAMP(filled_at) AS at FROM ems_prescription_fills
-            WHERE prescription_id IN (?) ORDER BY id DESC
-        ]], { ids }) or {}
-
-        for _, fill in ipairs(filled) do
-            fills[fill.prescription_id] = fills[fill.prescription_id] or {}
-            table.insert(fills[fill.prescription_id], { pharmacy = fill.pharmacy, at = fill.at })
-        end
-    end
-
     local out <const> = {}
     local now <const> = os.time()
 
@@ -49,7 +30,7 @@ local function format(rows)
             createdAt = row.created_at,
             endsAt = row.ends_at,
             status = row.status == 'active' and row.ends_at < now and 'expired' or row.status,
-            fills = fills[row.id] or {},
+            lastFill = row.last_filled_at and { pharmacy = row.last_pharmacy, at = row.last_filled_at },
         }
     end
 
@@ -79,7 +60,7 @@ function Prescriptions.create(data, prescriber, prescriberName, canControl)
     local citizenid <const> = type(data.citizenid) == 'string' and data.citizenid or nil
     local medication <const> = type(data.medication) == 'string' and data.medication:sub(1, 120) or ''
 
-    if not citizenid then return nil, locale('beds.pick_patient') end
+    if not citizenid then return nil, locale('mdt.pick_patient') end
 
     if medication == '' then return nil, locale('prescriptions.name_medication') end
 
@@ -129,21 +110,10 @@ end
 ---@param pharmacy string
 ---@return boolean
 function Prescriptions.fill(citizenid, id, pharmacy)
-    return MySQL.startTransaction(function(query)
-        local used <const> = query([[
-            UPDATE ems_prescriptions SET fills = fills + 1
-            WHERE id = ? AND citizenid = ? AND status = 'active' AND ends_at > NOW() AND fills <= refills
-        ]], { id, citizenid })
-
-        if used.affectedRows == 0 then return false end
-
-        query(
-            'INSERT INTO ems_prescription_fills (prescription_id, pharmacy) VALUES (?, ?)',
-            { id, pharmacy:sub(1, 120) }
-        )
-
-        return true
-    end) == true
+    return MySQL.update.await([[
+        UPDATE ems_prescriptions SET fills = fills + 1, last_pharmacy = ?, last_filled_at = NOW()
+        WHERE id = ? AND citizenid = ? AND status = 'active' AND ends_at > NOW() AND fills <= refills
+    ]], { pharmacy:sub(1, 120), id, citizenid }) == 1
 end
 
 return Prescriptions

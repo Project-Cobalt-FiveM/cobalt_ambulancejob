@@ -3,6 +3,7 @@
   import Button from '../ui/Button.svelte';
   import Dot from '../ui/Dot.svelte';
   import { bleed, stateLabel } from './calls';
+  import { bloodLabel } from '../records/format';
   import { fetchNui } from '../../lib/nui';
   import { mdt } from '../../lib/store.svelte';
   import { bodyPartLabel, capitalise, clockTime, countdown, distance, injuryDots, injuryLabel, statusDots, statusLabel } from '../../lib/format';
@@ -31,7 +32,7 @@
       [t('ui.dispatch.raised_by'), call.raisedBy],
       [t('ui.dispatch.caller'), call.caller && `${call.caller.name}, ${call.caller.number}`],
       [t('ui.dispatch.details'), call.description],
-      [t('ui.common.blood_type'), call.patient?.bloodType],
+      [t('ui.common.blood_type'), call.patient && bloodLabel(call.patient.bloodType)],
     ].filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
   const unhurt = $derived(call.patient ? unhurtLabel(call.patient.injuries) : '');

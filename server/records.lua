@@ -4,7 +4,7 @@ local medics <const> = require 'server.medics'
 local catalog <const> = require 'server.catalog'
 local billing <const> = require 'server.billing'
 
----@alias ReportOutcome 'scene'|'transported'|'admitted'|'deceased'|'respawned'
+---@alias ReportOutcome 'scene'|'transported'|'deceased'|'respawned'
 
 ---@class ReportInjury
 ---@field bodyPart BodyPart
@@ -25,7 +25,7 @@ local billing <const> = require 'server.billing'
 ---@field narrative string
 ---@field outcome ReportOutcome
 
-local OUTCOMES <const> = { scene = true, transported = true, admitted = true, deceased = true, respawned = true }
+local OUTCOMES <const> = { scene = true, transported = true, deceased = true, respawned = true }
 
 local Records <const> = {}
 
@@ -127,12 +127,7 @@ function Records.report(id)
     if not row then return end
 
     local out <const> = Records.summary(row)
-    local invoice <const> = MySQL.single.await([[
-        SELECT id, status, UNIX_TIMESTAMP(due_at) AS due_at FROM ems_invoices
-        WHERE report_id = ? ORDER BY id DESC LIMIT 1
-    ]], { id })
-    local bloodType <const> = row.citizenid
-        and MySQL.scalar.await('SELECT blood_type FROM ems_patients WHERE citizenid = ?', { row.citizenid })
+    local citizenid <const> = row.citizenid
 
     out.callId = row.call_id
     out.occurredAt = row.occurred_at
@@ -141,11 +136,8 @@ function Records.report(id)
     out.extras = json.decode(row.extras) or {}
     out.narrative = row.narrative
     out.sharedWithPolice = row.shared_with_police == 1 or row.shared_with_police == true
-    out.bloodType = bloodType
-    out.invoice = invoice and {
-        id = invoice.id,
-        status = invoice.status == 'unpaid' and invoice.due_at < os.time() and 'overdue' or invoice.status,
-    } or nil
+    out.bloodType = citizenid and exports.cobalt_core:GetMetaData({ citizenid }, 'bloodtype')[citizenid]
+    out.invoice = billing.forReport(id)
 
     return out
 end
@@ -323,7 +315,7 @@ function Records.bill(id, draft, sendInvoice, medic)
         return waive(id)
     end
 
-    local invoiceId <const> = billing.create({
+    local invoice <const> = billing.create({
         citizenid = draft.citizenid,
         patientName = draft.patientName,
         lines = lines,
@@ -332,13 +324,11 @@ function Records.bill(id, draft, sendInvoice, medic)
         medic = medic,
     })
 
-    if not invoiceId then return end
+    if not invoice then return end
 
-    local amount <const> = MySQL.scalar.await('SELECT amount FROM ems_invoices WHERE id = ?', { invoiceId })
+    Records.markBilled(id, invoice.amount)
 
-    Records.markBilled(id, amount)
-
-    return invoiceId
+    return invoice.id
 end
 
 ---@param source integer
@@ -360,7 +350,8 @@ function Records.fileRespawn(source, hospital, injuries, fee, reason)
         narrative = locale(('respawn.narrative_%s'):format(reason), hospital.label),
         outcome = 'respawned',
     })
-    local id <const> = Records.saveReport(draft, nil, locale('records.front_desk'), 'filed')
+    local frontDesk <const> = locale('records.front_desk')
+    local id <const> = Records.saveReport(draft, nil, frontDesk, 'filed')
 
     if not id then return end
 
@@ -368,19 +359,20 @@ function Records.fileRespawn(source, hospital, injuries, fee, reason)
         return waive(id)
     end
 
-    local invoiceId <const> = billing.create({
+    local invoice <const> = billing.create({
         citizenid = citizenid,
         patientName = draft.patientName,
         lines = { { label = locale('records.respawn_fee'), amount = fee } },
         reportId = id,
         summary = locale('records.respawn_invoice', id),
+        issuerName = frontDesk,
     })
 
-    if not invoiceId then return end
+    if not invoice then return end
 
     Records.markBilled(id, fee)
 
-    if not billing.chargeCashThenBank(source, invoiceId) then
+    if not billing.pay(invoice.id, 'cash_or_bank') then
         medics.notify(source, locale('respawn.owe', fee), 'warning')
     end
 end
@@ -429,26 +421,18 @@ function Records.patientSummaries(rows)
         ids[i] = row.citizenid
     end
 
-    local balances <const> = billing.balances(ids)
-    local details <const>, admissions <const>, treated <const> = {}, {}, {}
+    local balances <const> = billing.totals(ids).owed
+    local bloodTypes <const> = exports.cobalt_core:GetMetaData(ids, 'bloodtype')
+    local conditions <const>, treated <const> = {}, {}
 
     if #ids > 0 then
         local patients <const> = MySQL.query.await(
-            'SELECT citizenid, blood_type, conditions FROM ems_patients WHERE citizenid IN (?)',
+            'SELECT citizenid, conditions FROM ems_patients WHERE citizenid IN (?)',
             { ids }
         )
 
         for _, row in ipairs(patients or {}) do
-            details[row.citizenid] = row
-        end
-
-        local admitted <const> = MySQL.query.await(
-            'SELECT citizenid, hospital, bed FROM ems_admissions WHERE discharged_at IS NULL AND citizenid IN (?)',
-            { ids }
-        )
-
-        for _, row in ipairs(admitted or {}) do
-            admissions[row.citizenid] = locale('records.admitted_bed', row.bed)
+            conditions[row.citizenid] = json.decode(row.conditions)
         end
 
         local latest <const> = MySQL.query.await([[
@@ -469,7 +453,6 @@ function Records.patientSummaries(rows)
 
     for i, row in ipairs(rows) do
         local charinfo <const> = json.decode(row.charinfo or '{}') or {}
-        local detail <const> = details[row.citizenid]
         local source <const> = medics.sourceOf(row.citizenid)
         local revive <const> = source and Player(source).state.revive
 
@@ -479,12 +462,11 @@ function Records.patientSummaries(rows)
             sex = sexOf(charinfo),
             dob = charinfo.birthdate or '',
             age = ageOf(charinfo.birthdate),
-            bloodType = detail?.blood_type,
+            bloodType = bloodTypes[row.citizenid],
             state = revive?.state or 'alive',
             online = source ~= nil,
-            admission = admissions[row.citizenid],
             balance = balances[row.citizenid] or 0,
-            conditions = detail and json.decode(detail.conditions) or {},
+            conditions = conditions[row.citizenid] or {},
             lastTreated = treated[row.citizenid],
         }
     end

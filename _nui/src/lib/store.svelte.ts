@@ -1,7 +1,7 @@
 import { fetchNui, isFailure } from './nui';
 import { nowSeconds } from './format';
 import { setLocales, t } from './locale.svelte';
-import type { AlertData, Call, Created, DeathScreen, Keybinds, Medic, MedicStatus, Messages, Page, Permission, Result, Session, Settings } from './types';
+import type { AlertData, Call, Created, DeathScreen, HospitalBeds, Keybinds, Medic, MedicStatus, Messages, Page, Permission, Result, Session, Settings } from './types';
 
 export type Route =
   | { page: Exclude<Page, 'patients' | 'reports'> }
@@ -41,7 +41,7 @@ class Mdt {
   bleedoutSeconds = $state(0);
   death = $state<{ screen: DeathScreen; offset: number } | null>(null);
   deathHold = $state<{ ms: number; startedAt: number } | null>(null);
-  bedsVersion = $state(0);
+  beds = $state<HospitalBeds[] | null>(null);
 
   openCalls = $derived(this.calls.filter((call) => call.status === 'open'));
 
@@ -193,6 +193,7 @@ class Mdt {
     this.settings = data.settings;
     this.keybinds = data.keybinds;
     this.visible = true;
+    this.beds = null;
 
     const page = data.page && data.medic.pages.includes(data.page) ? data.page : (data.medic.pages[0] ?? 'dashboard');
     this.route = routeFor(page, data.citizenid);
@@ -248,7 +249,7 @@ class Mdt {
         this.alerts = this.alerts.filter((alert) => alert.call.id !== message.data.id);
         break;
       case 'bedsChanged':
-        this.bedsVersion++;
+        this.beds = message.data;
         break;
       default: {
         const exhaustive: never = message;

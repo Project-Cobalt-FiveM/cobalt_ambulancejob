@@ -1,13 +1,9 @@
 import { longDate, money } from '../../lib/format';
 import { t } from '../../lib/locale.svelte';
-import type { ReportSummary, Treatment } from '../../lib/types';
+import type { BloodType, ReportSummary, Treatment } from '../../lib/types';
 
-export const bloodTypes = ['O negative', 'O positive', 'A negative', 'A positive', 'B negative', 'B positive', 'AB negative', 'AB positive'];
-
-export function shortBlood(bloodType: string | null): string {
-  if (!bloodType) return t('ui.common.unknown');
-
-  return bloodType.replace(/negative$/i, 'neg').replace(/positive$/i, 'pos');
+export function bloodLabel(bloodType?: BloodType): string {
+  return bloodType ?? t('ui.common.unknown');
 }
 
 export function bornOn(dob: string): string {

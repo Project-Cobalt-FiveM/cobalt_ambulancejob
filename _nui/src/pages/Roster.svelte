@@ -150,7 +150,7 @@
         <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6" in:crossfade>
           <div class="flex flex-col gap-1">
             <span class="text-13 text-muted-foreground tabular-nums">
-              {selected.joinedAt !== null ? t('ui.roster.joined_hours', longDate(selected.joinedAt), plural(selected.hoursOnDuty, 'ui.plural.hours')) : t('ui.roster.hours', plural(selected.hoursOnDuty, 'ui.plural.hours'))}
+              {selected.joinedAt != null ? t('ui.roster.joined_hours', longDate(selected.joinedAt), plural(selected.hoursOnDuty, 'ui.plural.hours')) : t('ui.roster.hours', plural(selected.hoursOnDuty, 'ui.plural.hours'))}
             </span>
             <h2 class="text-xl font-semibold tracking-[-0.01em]">{selected.name}</h2>
           </div>

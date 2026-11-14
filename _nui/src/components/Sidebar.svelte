@@ -7,7 +7,6 @@
   import FileText from 'phosphor-svelte/lib/FileText';
   import Pill from 'phosphor-svelte/lib/Pill';
   import Receipt from 'phosphor-svelte/lib/Receipt';
-  import Bed from 'phosphor-svelte/lib/Bed';
   import IdentificationBadge from 'phosphor-svelte/lib/IdentificationBadge';
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import Lock from 'phosphor-svelte/lib/Lock';
@@ -34,7 +33,6 @@
       { page: 'billing', icon: Receipt, badge: () => ({ count: mdt.unpaid, urgent: false }) },
     ],
     [
-      { page: 'beds', icon: Bed },
       { page: 'roster', icon: IdentificationBadge },
       { page: 'management', icon: GearSix },
     ],

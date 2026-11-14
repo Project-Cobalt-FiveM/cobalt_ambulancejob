@@ -11,7 +11,7 @@
   const groups: { title: string; items: Permission[] }[] = [
     {
       title: 'patient_care',
-      items: ['writeReports', 'editOtherReports', 'editPatients', 'writePrescriptions', 'prescribeControlled', 'admitDischarge', 'useDefib'],
+      items: ['writeReports', 'editOtherReports', 'editPatients', 'writePrescriptions', 'prescribeControlled', 'useDefib'],
     },
     {
       title: 'department',

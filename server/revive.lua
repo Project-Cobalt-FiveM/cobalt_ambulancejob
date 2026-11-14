@@ -32,6 +32,7 @@ function Revive.respawnAtHospital(source, fee, reason)
     local hospital <const> = Revive.nearestHospital(source)
     local injuries <const> = state.injuryList(source)
 
+    beds.release(source)
     state.setRevive(source, REVIVE.ALIVE)
     state.clearInjuries(source)
     TriggerClientEvent('cobalt_ambulancejob:client:respawnAt', source, hospital.respawn)
@@ -108,6 +109,7 @@ end
 local function enterDown(source)
     if state.revive(source).state ~= REVIVE.ALIVE then return end
 
+    beds.release(source)
     state.setRevive(source, REVIVE.DOWN)
     stampFallbackInjury(source)
 
@@ -165,6 +167,7 @@ RegisterNetEvent('cobalt_ambulancejob:server:enterKnockedOut', function()
     end
 
     knockoutHits[source] = nil
+    beds.release(source)
     state.setRevive(source, REVIVE.KNOCKED_OUT)
 
     SetTimeout(config.knockout.seconds * 1000, function()
@@ -330,11 +333,6 @@ RegisterNetEvent('cobalt_ambulancejob:server:defib', function(target)
 
     state.setRevive(target, REVIVE.ALIVE)
     TriggerClientEvent('cobalt_ambulancejob:client:reviveInPlace', target)
-    local recovered <const>, recoverError <const> = pcall(beds.recover, target, medics.name(actor))
-
-    if not recovered then
-        lib.print.error(('Bed recovery for %d failed: %s'):format(target, recoverError))
-    end
 
     local patient <const> = medics.citizenid(target)
     local medic <const> = medics.citizenid(actor)

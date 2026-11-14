@@ -11,17 +11,24 @@
   import { age, countdown, money, plural, shiftLabel, statusDots, statusLabel } from '../lib/format';
   import { t } from '../lib/locale.svelte';
   import { crossfade } from '../lib/motion';
-  import type { Call, Dashboard, DashboardStats, HospitalCapacity, Page } from '../lib/types';
+  import type { BedOccupant, Call, Dashboard, DashboardStats, HospitalBeds, Page } from '../lib/types';
 
-  type Stat = { label: string; value: string; note: string; tone: string; page: Page };
+  type Stat = { label: string; value: string; note: string; tone: string; page: Page | null };
+
+  type OccupantLine = { text: string; tone: string; dot: string | null };
 
   let data = $state<Dashboard | null>(null);
 
   const calls = $derived(mdt.openCalls.slice(0, 3));
-  const stats = $derived(data ? statCards(data.stats) : []);
+  const hospitals = $derived((mdt.beds ?? []).filter((hospital) => hospital.total > 0));
+  const stats = $derived(data ? statCards(data.stats, hospitals) : []);
 
   onMount(async () => {
-    data = mdt.single(await fetchNui('getDashboard')) ?? data;
+    const reply = mdt.single(await fetchNui('getDashboard'));
+    if (!reply) return;
+
+    data = reply;
+    mdt.beds = reply.hospitals;
   });
 
   function fourthCard(stats: DashboardStats): Stat {
@@ -44,7 +51,21 @@
     };
   }
 
-  function statCards(stats: DashboardStats): Stat[] {
+  function bedsCard(hospitals: HospitalBeds[]): Stat {
+    const total = hospitals.reduce((sum, hospital) => sum + hospital.total, 0);
+    const occupied = hospitals.reduce((sum, hospital) => sum + hospital.occupied, 0);
+    const full = total > 0 && occupied >= total;
+
+    return {
+      label: t('ui.dashboard.beds_free'),
+      value: t('ui.common.x_of_y', total - occupied, total),
+      note: total === 0 ? t('ui.dashboard.no_beds') : full ? t('ui.dashboard.beds_full') : t('ui.dashboard.beds_in_use', occupied),
+      tone: full ? 'text-warning' : 'text-muted-foreground',
+      page: null,
+    };
+  }
+
+  function statCards(stats: DashboardStats, hospitals: HospitalBeds[]): Stat[] {
     return [
       {
         label: t('ui.dashboard.open_calls'),
@@ -60,13 +81,7 @@
         tone: 'text-muted-foreground',
         page: 'roster',
       },
-      {
-        label: t('ui.dashboard.beds_free'),
-        value: t('ui.common.x_of_y', stats.bedsFree, stats.bedsTotal),
-        note: t('ui.dashboard.across', plural(stats.hospitals, 'ui.plural.hospitals')),
-        tone: 'text-muted-foreground',
-        page: 'beds',
-      },
+      bedsCard(hospitals),
       fourthCard(stats),
     ];
   }
@@ -77,13 +92,28 @@
     return call.location;
   }
 
-  function fill(hospital: HospitalCapacity): string {
-    const share = hospital.total ? hospital.admitted / hospital.total : 0;
-    if (share >= 1) return 'bg-destructive';
-    if (share >= 0.5) return 'bg-warning';
-    return 'bg-muted-foreground';
+  function occupantLine(occupant: BedOccupant): OccupantLine {
+    switch (occupant.state) {
+      case 'down':
+      case 'dead':
+        return { text: stateLabel(occupant.state), tone: 'text-destructive', dot: 'bg-destructive' };
+      case 'knocked_out':
+        return { text: stateLabel(occupant.state), tone: 'text-warning', dot: 'bg-warning' };
+      case 'alive':
+        return { text: t(`ui.dashboard.bed_use.${occupant.use}`), tone: 'text-muted-foreground', dot: null };
+      default: {
+        const exhaustive: never = occupant.state;
+        return exhaustive;
+      }
+    }
   }
 </script>
+
+{#snippet statBody(stat: Stat)}
+  <span class="text-13 text-muted-foreground">{stat.label}</span>
+  <span class="text-28 font-semibold tracking-[-0.02em] tabular-nums">{stat.value}</span>
+  <span class="text-xs {stat.tone}">{stat.note}</span>
+{/snippet}
 
 <Header title={t('ui.sidebar.dashboard')} subtitle={shiftLabel(mdt.now)}>
   {#snippet action()}
@@ -97,11 +127,14 @@
   <section class="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
     <div class="grid grid-cols-4 gap-3">
       {#each stats as stat (stat.label)}
-        <button type="button" class="flex flex-col gap-2 rounded-lg border border-border p-4 text-left transition-colors hover:bg-muted" onclick={() => mdt.go(stat.page)}>
-          <span class="text-13 text-muted-foreground">{stat.label}</span>
-          <span class="text-28 font-semibold tracking-[-0.02em] tabular-nums">{stat.value}</span>
-          <span class="text-xs {stat.tone}">{stat.note}</span>
-        </button>
+        {#if stat.page}
+          {@const page = stat.page}
+          <button type="button" class="flex flex-col gap-2 rounded-lg border border-border p-4 text-left transition-colors hover:bg-muted" onclick={() => mdt.go(page)}>
+            {@render statBody(stat)}
+          </button>
+        {:else}
+          <div class="flex flex-col gap-2 rounded-lg border border-border p-4">{@render statBody(stat)}</div>
+        {/if}
       {/each}
     </div>
 
@@ -134,23 +167,38 @@
       </div>
     </div>
 
-    <div class="flex flex-col gap-3">
-      <h2 class="text-base font-semibold">{t('ui.dashboard.capacity')}</h2>
-      <div class="flex gap-3">
-        {#each data?.capacity ?? [] as hospital (hospital.id)}
-          <div class="flex min-w-0 flex-1 flex-col gap-2.5 rounded-lg border border-border p-4">
-            <div class="flex justify-between gap-2">
-              <span class="truncate text-sm font-medium">{hospital.label}</span>
-              <span class="shrink-0 text-13 tabular-nums">{t('ui.dashboard.free_of', hospital.free, hospital.total)}</span>
-            </div>
-            <div class="flex h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div class="h-full rounded-full transition-[width] duration-300 {fill(hospital)}" style:width="{hospital.total ? (hospital.admitted / hospital.total) * 100 : 0}%"></div>
-            </div>
-            <span class="text-xs text-muted-foreground">{hospital.admitted ? t('ui.dashboard.admitted', hospital.admitted) : t('ui.dashboard.no_patients')}</span>
-          </div>
-        {/each}
+    {#each hospitals as hospital (hospital.id)}
+      <div class="flex flex-col gap-3">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="truncate text-base font-semibold">{t('ui.dashboard.beds_at', hospital.label)}</h2>
+          <span class="shrink-0 text-13 text-muted-foreground tabular-nums">{t('ui.dashboard.free_of', hospital.total - hospital.occupied, hospital.total)}</span>
+        </div>
+        <div class="grid auto-rows-fr grid-cols-6 gap-2">
+          {#each hospital.beds as bed (bed.index)}
+            {#if bed.occupant}
+              {@const occupant = bed.occupant}
+              {@const line = occupantLine(occupant)}
+              <button type="button" class="flex min-w-0 flex-col gap-1 rounded-md border border-border p-3 text-left transition-colors hover:bg-muted" onclick={() => mdt.openPatient(occupant.citizenid)} in:crossfade>
+                <span class="flex justify-between gap-2 text-xs text-muted-foreground">
+                  <span class="truncate">{bed.label}</span>
+                  <span class="shrink-0 tabular-nums">{age(occupant.since, mdt.now)}</span>
+                </span>
+                <span class="truncate text-13 font-semibold">{occupant.name}</span>
+                <span class="flex min-w-0 items-center gap-1.5 text-xs {line.tone}">
+                  {#if line.dot}<Dot class={line.dot} size="size-1.5" />{/if}
+                  <span class="truncate">{line.text}</span>
+                </span>
+              </button>
+            {:else}
+              <div class="flex min-w-0 flex-col gap-1 rounded-md border border-dashed border-input p-3" in:crossfade>
+                <span class="truncate text-xs text-muted-foreground">{bed.label}</span>
+                <span class="text-13 text-muted-foreground">{t('ui.dashboard.bed_free')}</span>
+              </div>
+            {/if}
+          {/each}
+        </div>
       </div>
-    </div>
+    {/each}
   </section>
 
   <aside class="flex w-85 shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-6">

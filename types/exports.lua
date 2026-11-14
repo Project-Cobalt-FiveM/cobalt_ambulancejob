@@ -9,7 +9,6 @@
 ---| 'reports'
 ---| 'prescriptions'
 ---| 'billing'
----| 'beds'
 ---| 'roster'
 ---| 'management'
 
@@ -32,7 +31,7 @@
 ---@field createdAt integer epoch seconds
 ---@field endsAt integer epoch seconds
 ---@field status 'active'|'expired'|'cancelled'
----@field fills { pharmacy: string, at: integer }[]
+---@field lastFill? { pharmacy: string, at: integer } the latest pharmacy fill, `at` in epoch seconds; nil until first filled
 
 ---@class AmbulanceReportSummary
 ---@field id integer
@@ -41,7 +40,7 @@
 ---@field summary string
 ---@field medic string
 ---@field medicCitizenid string?
----@field outcome 'scene'|'transported'|'admitted'|'deceased'|'respawned'
+---@field outcome 'scene'|'transported'|'deceased'|'respawned'
 ---@field status 'draft'|'filed'
 ---@field billing 'pending'|'billed'|'waived'
 ---@field billed integer?

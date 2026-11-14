@@ -9,16 +9,15 @@
   import Badge from '../components/ui/Badge.svelte';
   import Tabs from '../components/ui/Tabs.svelte';
   import Row from '../components/ui/Row.svelte';
-  import Select from '../components/ui/Select.svelte';
-  import { bloodTypes, bornOn } from '../components/records/format';
+  import { bloodLabel, bornOn } from '../components/records/format';
   import { fetchNui } from '../lib/nui';
   import { mdt } from '../lib/store.svelte';
-  import { bodyPartLabel, bodyParts, injuryLabel, invoiceNumber, invoiceStatusLabel, longDate, money, outcomeLabel, prescriptionNumber, prescriptionStatusLabel, reportNumber, shortDate } from '../lib/format';
+  import { bodyPartLabel, bodyParts, injuryLabel, invoiceNumber, invoiceStatusLabel, money, outcomeLabel, prescriptionNumber, prescriptionStatusLabel, reportNumber, shortDate } from '../lib/format';
   import { t } from '../lib/locale.svelte';
   import { crossfade } from '../lib/motion';
   import type { BodyPart, Injury, InjuryKind, Patient, PatientInput, ReportSummary } from '../lib/types';
 
-  type TabKey = 'treatments' | 'prescriptions' | 'admissions' | 'invoices' | 'notes';
+  type TabKey = 'treatments' | 'prescriptions' | 'invoices' | 'notes';
 
   let { citizenid }: { citizenid: string } = $props();
 
@@ -26,7 +25,6 @@
   let missing = $state(false);
   let tab = $state<TabKey>('treatments');
   let editing = $state(false);
-  let bloodType = $state('');
   let emergencyContact = $state('');
   let notes = $state('');
   let addingCondition = $state(false);
@@ -34,7 +32,6 @@
 
   const editable = $derived(mdt.can('editPatients'));
   const down = $derived(patient?.state === 'down' || patient?.state === 'dead');
-  const bloodOptions = $derived([{ value: '', label: t('ui.common.unknown') }, ...bloodTypes.map((value) => ({ value, label: value }))]);
 
   const injuryBorders: Record<InjuryKind, string> = {
     bleeding: 'border-destructive',
@@ -55,7 +52,6 @@
   function input(current: Patient, changes: Partial<PatientInput>): PatientInput {
     return {
       citizenid,
-      bloodType: current.bloodType,
       conditions: [...current.conditions],
       emergencyContact: current.emergencyContact,
       notes: current.notes,
@@ -74,13 +70,12 @@
   function startEditing() {
     if (!patient) return;
 
-    bloodType = patient.bloodType ?? '';
     emergencyContact = patient.emergencyContact;
     editing = true;
   }
 
   async function saveDetails() {
-    if (await save({ bloodType: bloodType || null, emergencyContact: emergencyContact.trim() }, t('ui.patient.details_saved'))) editing = false;
+    if (await save({ emergencyContact: emergencyContact.trim() }, t('ui.patient.details_saved'))) editing = false;
   }
 
   async function addCondition() {
@@ -161,10 +156,6 @@
       {#if editing}
         <div class="flex flex-col gap-3" in:crossfade>
           <label class="flex flex-col gap-1.5 text-13">
-            <span class="text-muted-foreground">{t('ui.common.blood_type')}</span>
-            <Select label={t('ui.common.blood_type')} options={bloodOptions} bind:value={bloodType} />
-          </label>
-          <label class="flex flex-col gap-1.5 text-13">
             <span class="text-muted-foreground">{t('ui.patient.emergency_contact')}</span>
             <input class="field" bind:value={emergencyContact} maxlength="80" placeholder={t('ui.patient.contact_placeholder')} />
           </label>
@@ -176,7 +167,7 @@
       {:else}
         <div class="flex flex-col">
           <Row label={t('ui.patient.born')}>{bornOn(patient.dob)}</Row>
-          <Row label={t('ui.common.blood_type')}><span class="font-semibold">{patient.bloodType ?? t('ui.common.unknown')}</span></Row>
+          <Row label={t('ui.common.blood_type')}><span class="font-semibold">{bloodLabel(patient.bloodType)}</span></Row>
           <Row label={t('ui.patient.phone')}>{patient.phone || t('ui.common.none')}</Row>
           <Row label={t('ui.patient.emergency_contact')}>{patient.emergencyContact || t('ui.common.none')}</Row>
           {#if editable}
@@ -221,20 +212,16 @@
     </aside>
 
     <section class="flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
-      <div class="flex items-center gap-3 border-b border-border pb-4">
-        <div class="flex-1">
-          <Tabs
-            bind:value={tab}
-            tabs={[
-              { value: 'treatments', label: t('ui.patient.tab_treatments'), count: patient.reports.length },
-              { value: 'prescriptions', label: t('ui.sidebar.prescriptions'), count: patient.prescriptions.length },
-              { value: 'admissions', label: t('ui.patient.tab_admissions'), count: patient.admissions.length },
-              { value: 'invoices', label: t('ui.patient.tab_invoices'), count: patient.invoices.length },
-              { value: 'notes', label: t('ui.patient.tab_notes') },
-            ]}
-          />
-        </div>
-        {#if mdt.can('admitDischarge')}<Button size="sm" onclick={() => mdt.go('beds')}>{t('ui.patient.admit_to_bed')}</Button>{/if}
+      <div class="border-b border-border pb-4">
+        <Tabs
+          bind:value={tab}
+          tabs={[
+            { value: 'treatments', label: t('ui.patient.tab_treatments'), count: patient.reports.length },
+            { value: 'prescriptions', label: t('ui.sidebar.prescriptions'), count: patient.prescriptions.length },
+            { value: 'invoices', label: t('ui.patient.tab_invoices'), count: patient.invoices.length },
+            { value: 'notes', label: t('ui.patient.tab_notes') },
+          ]}
+        />
       </div>
 
       <div class="flex flex-col gap-2.5 rounded-lg border border-border p-4">
@@ -288,20 +275,6 @@
               </div>
             {:else}
               <p class="py-6 text-sm text-muted-foreground">{t('ui.patient.no_prescriptions')}</p>
-            {/each}
-          {:else if tab === 'admissions'}
-            {#each patient.admissions as admission (admission.id)}
-              <div class="flex items-center gap-4 border-b border-border py-3">
-                <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span class="truncate text-sm font-medium">{admission.reason}</span>
-                  <span class="truncate text-xs text-muted-foreground">{t('ui.patient.admission_detail', admission.hospital, admission.bed, admission.attending)}</span>
-                </span>
-                <span class="text-13 text-muted-foreground tabular-nums">
-                  {admission.dischargedAt !== null ? t('ui.patient.date_range', longDate(admission.admittedAt), longDate(admission.dischargedAt)) : t('ui.patient.still_admitted', longDate(admission.admittedAt))}
-                </span>
-              </div>
-            {:else}
-              <p class="py-6 text-sm text-muted-foreground">{t('ui.patient.never_admitted')}</p>
             {/each}
           {:else if tab === 'invoices'}
             {#each patient.invoices as invoice (invoice.id)}

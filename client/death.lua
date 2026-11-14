@@ -144,6 +144,13 @@ local function disableControls()
 end
 
 ---@param ped integer
+local function clearTasks(ped)
+    if patient.inBed() then return end
+
+    ClearPedTasksImmediately(ped)
+end
+
+---@param ped integer
 ---@param anim { dict: string, clip: string }
 local function playLoop(ped, anim)
     if IsEntityPlayingAnim(ped, anim.dict, anim.clip, 3) then return end
@@ -211,7 +218,7 @@ local function downLoop()
                 SetPedToRagdoll(ped, 1500, 1500, 0, true, true, false)
             end
         elseif revive.state == REVIVE.DOWN then
-            if not cache.vehicle then
+            if not cache.vehicle and not patient.inBed() then
                 crawl(ped)
             end
 
@@ -243,7 +250,7 @@ local function downLoop()
                 TriggerServerEvent('cobalt_ambulancejob:server:bledOut')
             end
         else
-            if not cache.vehicle then
+            if not cache.vehicle and not patient.inBed() then
                 playLoop(ped, config.deadAnim)
             end
 
@@ -279,7 +286,7 @@ local function onRevive(value)
         SetCurrentPedWeapon(ped, `WEAPON_UNARMED`, true)
 
         if name ~= REVIVE.KNOCKED_OUT then
-            ClearPedTasksImmediately(ped)
+            clearTasks(ped)
         else
             SetPedToRagdoll(ped, 5000, 5000, 0, true, true, false)
         end
@@ -292,7 +299,7 @@ local function onRevive(value)
     end
 
     enteredDown = false
-    ClearPedTasksImmediately(ped)
+    clearTasks(ped)
     clearDeathState()
 end
 
@@ -322,7 +329,7 @@ RegisterNetEvent('cobalt_ambulancejob:client:reviveInPlace', function()
 
     SetEntityHealth(ped, GetEntityMaxHealth(ped))
     ClearPedBloodDamage(ped)
-    ClearPedTasksImmediately(ped)
+    clearTasks(ped)
 end)
 
 RegisterNetEvent('cobalt_ambulancejob:client:healed', function()

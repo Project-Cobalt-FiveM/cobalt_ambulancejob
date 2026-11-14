@@ -43,7 +43,7 @@ export async function fetchNui<K extends keyof Requests>(name: K, ...args: Args<
   }
 }
 
-const actions: ReadonlySet<string> = new Set<Messages['action']>(['open', 'close', 'callAdded', 'callUpdated', 'alert', 'alertClear', 'death', 'deathHold']);
+const actions: ReadonlySet<string> = new Set<Messages['action']>(['open', 'close', 'callAdded', 'callUpdated', 'alert', 'alertClear', 'death', 'deathHold', 'bedsChanged']);
 
 function isMessage(value: unknown): value is Messages {
   if (typeof value !== 'object' || value === null || !('action' in value)) return false;
@@ -67,4 +67,5 @@ export async function sendMockOpen(): Promise<void> {
   if (['#laststand', '#dead', '#respawn'].includes(location.hash)) return module.startDeath();
   if (location.hash !== '#popup') window.postMessage(module.openMessage, '*');
   module.startAlerts();
+  module.startBedUpdates();
 }

@@ -19,20 +19,7 @@ local function bloodTypes(calls)
         ids[#ids + 1] = patients[call.id]
     end
 
-    local out <const> = {}
-
-    if #ids == 0 then return out end
-
-    local rows <const> = MySQL.query.await(
-        'SELECT citizenid, blood_type FROM ems_patients WHERE citizenid IN (?)',
-        { ids }
-    )
-
-    for _, row in ipairs(rows or {}) do
-        out[row.citizenid] = row.blood_type
-    end
-
-    return out
+    return exports.cobalt_core:GetMetaData(ids, 'bloodtype')
 end
 
 ---@param citizenid string

@@ -8,16 +8,16 @@
   import Picker from '../components/ui/Picker.svelte';
   import Toggle from '../components/ui/Toggle.svelte';
   import Dot from '../components/ui/Dot.svelte';
-  import { shortBlood, tally, times } from '../components/records/format';
+  import { bloodLabel, tally, times } from '../components/records/format';
   import { fetchNui } from '../lib/nui';
   import { mdt, type ReportEditor } from '../lib/store.svelte';
   import { bodyPartLabel, bodyParts, clockTime, injuryDots, injuryKinds, injuryLabel, money, nowSeconds, outcomeLabel, pad, reportNumber, shortDate, toDate } from '../lib/format';
   import { t } from '../lib/locale.svelte';
   import { crossfade } from '../lib/motion';
   import type { PickOption } from '../components/ui/types';
-  import type { BodyPart, InjuryKind, Report, ReportDraft, ReportInjury, ReportOutcome, ReportStatus, Template, Treatment, TreatmentCategory } from '../lib/types';
+  import type { BloodType, BodyPart, InjuryKind, Report, ReportDraft, ReportInjury, ReportOutcome, ReportStatus, Template, Treatment, TreatmentCategory } from '../lib/types';
 
-  type PatientPick = { citizenid: string | null; name: string; bloodType: string | null };
+  type PatientPick = { citizenid: string | null; name: string; bloodType?: BloodType };
 
   type BillLine = { key: string; label: string; amount: number; remove?: () => void };
 
@@ -25,7 +25,7 @@
 
   const seed = untrack(() => editor);
 
-  const outcomes: ReportOutcome[] = ['scene', 'transported', 'admitted', 'deceased'];
+  const outcomes: ReportOutcome[] = ['scene', 'transported', 'deceased'];
   const partOptions = $derived(bodyParts.map((value) => ({ value, label: bodyPartLabel(value) })));
   const kindOptions = $derived(injuryKinds.map((value) => ({ value, label: injuryLabel(value), dot: injuryDots[value] })));
 
@@ -42,7 +42,7 @@
     outcome: 'scene',
   });
 
-  let bloodType = $state<string | null>(null);
+  let bloodType = $state<BloodType>();
   let status = $state<ReportStatus>('draft');
   let author = $state<string | null>(null);
   let loading = $state(true);
@@ -58,10 +58,10 @@
   let timeInput = $state<HTMLInputElement>();
 
   const catalogue = $derived(new Map(treatments.map((treatment) => [treatment.id, treatment])));
-  const ownsReport = $derived(author === null || author === mdt.medic?.citizenid || mdt.can('editOtherReports'));
+  const ownsReport = $derived(author == null || author === mdt.medic?.citizenid || mdt.can('editOtherReports'));
   const editable = $derived(!loading && status === 'draft' && mdt.can('writeReports') && ownsReport);
-  const hasPatient = $derived(draft.citizenid !== null || draft.patientName.trim().length > 0);
-  const invoiceAllowed = $derived(draft.citizenid !== null && mdt.can('sendInvoices'));
+  const hasPatient = $derived(draft.citizenid != null || draft.patientName.trim().length > 0);
+  const invoiceAllowed = $derived(draft.citizenid != null && mdt.can('sendInvoices'));
   const billing = $derived(sendInvoice && invoiceAllowed);
   const ready = $derived(hasPatient && draft.narrative.trim().length > 0);
   const templateOptions = $derived([{ value: 0, label: t('ui.common.none') }, ...templates.map((entry) => ({ value: entry.id, label: entry.name }))]);
@@ -107,11 +107,11 @@
     };
   }
 
-  async function lookupBlood(citizenid: string | null): Promise<string | null> {
-    if (!citizenid) return null;
+  async function lookupBlood(citizenid: string | null): Promise<BloodType | undefined> {
+    if (!citizenid) return;
 
     const found = mdt.list(await fetchNui('searchPatients', { query: citizenid })) ?? [];
-    return found.find((patient) => patient.citizenid === citizenid)?.bloodType ?? null;
+    return found.find((patient) => patient.citizenid === citizenid)?.bloodType;
   }
 
   async function loadReport(id: number) {
@@ -159,7 +159,7 @@
   }
 
   function patientLabel(): string {
-    return draft.citizenid ? `${draft.patientName}, ${shortBlood(bloodType)}` : t('ui.editor.unknown_patient_chip', draft.patientName);
+    return draft.citizenid ? `${draft.patientName}, ${bloodLabel(bloodType)}` : t('ui.editor.unknown_patient_chip', draft.patientName);
   }
 
   function pickPatient(patient: PatientPick) {
@@ -169,7 +169,7 @@
   }
 
   function clearPatient() {
-    pickPatient({ citizenid: null, name: '', bloodType: null });
+    pickPatient({ citizenid: null, name: '' });
   }
 
   async function searchPatients(query: string): Promise<PickOption<PatientPick>[]> {
@@ -179,7 +179,7 @@
     return found.map((patient) => ({
       key: patient.citizenid,
       label: patient.name,
-      detail: `${patient.citizenid}, ${shortBlood(patient.bloodType)}`,
+      detail: `${patient.citizenid}, ${bloodLabel(patient.bloodType)}`,
       value: { citizenid: patient.citizenid, name: patient.name, bloodType: patient.bloodType },
     }));
   }
@@ -189,7 +189,7 @@
       key: `unknown-${query}`,
       label: t('ui.editor.add_unknown', query),
       detail: t('ui.editor.no_record'),
-      value: { citizenid: null, name: query, bloodType: null },
+      value: { citizenid: null, name: query },
     };
   }
 
@@ -429,7 +429,7 @@
       <Toggle label={t('ui.editor.send_invoice')} checked={billing} disabled={!editable || !invoiceAllowed} onchange={(value) => (sendInvoice = value)} />
       <div class="flex flex-col gap-0.5">
         <span class="text-sm {invoiceAllowed ? '' : 'text-muted-foreground'}">{t('ui.editor.send_invoice')}</span>
-        <span class="text-xs text-muted-foreground">{draft.citizenid === null ? t('ui.editor.needs_record') : t('ui.editor.paid_from_bank')}</span>
+        <span class="text-xs text-muted-foreground">{draft.citizenid == null ? t('ui.editor.needs_record') : t('ui.editor.paid_from_bank')}</span>
       </div>
     </div>
 

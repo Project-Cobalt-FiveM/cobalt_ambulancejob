@@ -1,6 +1,7 @@
 local states <const> = require 'shared.states'
 local medics <const> = require 'server.medics'
 local state <const> = require 'server.state'
+local beds <const> = require 'server.beds'
 
 local CARRY <const> = states.carry
 local CARRY_RANGE <const> = 2.5
@@ -49,8 +50,31 @@ RegisterNetEvent('cobalt_ambulancejob:server:startCarry', function(target)
         return medics.notify(actor, locale('carry.get_closer'), 'error')
     end
 
+    beds.release(target)
     setCarry(actor, { state = CARRY.FIREMAN, victim = target })
     setCarry(target, { state = CARRY.FIREMAN, carrier = actor })
+end)
+
+RegisterNetEvent('cobalt_ambulancejob:server:layOnBed', function(hospitalId, index)
+    local actor <const> = source
+    local victim <const> = carryOf(actor).victim
+
+    if not victim or type(hospitalId) ~= 'string' or math.type(index) ~= 'integer' then return end
+    if not medics.isOnDuty(actor) then return end
+
+    if not beds.near(actor, hospitalId, index) then
+        return medics.notify(actor, locale('beds.get_closer'), 'error')
+    end
+
+    if not beds.isFree(hospitalId, index) then
+        return medics.notify(actor, locale('beds.taken'), 'error')
+    end
+
+    detach(actor, victim)
+
+    if beds.occupy(victim, hospitalId, index, 'medic') then
+        medics.notify(actor, locale('beds.laid_patient'), 'success')
+    end
 end)
 
 RegisterNetEvent('cobalt_ambulancejob:server:stopCarry', function()
