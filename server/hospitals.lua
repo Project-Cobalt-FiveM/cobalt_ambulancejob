@@ -23,7 +23,8 @@ for _, hospital in ipairs(hospitals.list()) do
 
     if stash then
         exports.cobalt_inventory:CreateStash(stash.id, {
-            invType = 'stash',
+            slots = stash.slots,
+            maxWeight = stash.maxWeight,
             label = stash.label,
             jobs = { [config.job] = 0 },
             coords = stash.coords,

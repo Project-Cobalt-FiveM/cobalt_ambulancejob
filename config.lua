@@ -20,7 +20,7 @@
 ---@field respawn vector4
 ---@field doctor? { model: string, coords: vector4, scenario?: string }
 ---@field checkIn? vector3
----@field supplyStash? { id: string, label: string, coords: vector3 }
+---@field supplyStash? { id: string, label: string, coords: vector3, slots: integer, maxWeight: integer }
 ---@field wardrobe? vector3
 ---@field spawner? { coords: vector3, spawnCoords: vector4, vehicles: { model: string, label: string }[] }
 ---@field beds Bed[]
@@ -174,6 +174,8 @@ return {
                 id = 'pillbox_supplies', -- cobalt_inventory stash id
                 label = 'Pillbox Medical Supplies', -- stash title
                 coords = vec3(307.42, -601.58, 43.28), -- where medics open it
+                slots = 100, -- cells in the stash, laid out 5 to a row
+                maxWeight = 200000, -- most it holds, in grams
             },
             wardrobe = vec3(310.56, -598.14, 43.28), -- where medics change into uniform
             spawner = { -- work vehicle garage
