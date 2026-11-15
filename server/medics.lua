@@ -70,7 +70,7 @@ end
 ---@param citizenid string
 ---@return integer?
 function Medics.sourceOf(citizenid)
-    return Cobalt.Functions.GetPlayerByCitizenId(citizenid)?.PlayerData.source
+    return Cobalt.Functions.GetPlayerByCitizenId(citizenid, true)?.PlayerData.source
 end
 
 ---@param source integer
